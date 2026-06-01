@@ -25,6 +25,14 @@ st.set_page_config(
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 ASSETS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT"]
+
+EXCHANGES = {
+    "Binance":  "binance",
+    "OKX":      "okx",
+    "Kraken":   "kraken",
+    "Bybit":    "bybit",
+    "Gate.io":  "gateio",
+}
 OHLCV_COLS = ["open", "high", "low", "close", "volume"]
 
 INDICATOR_PARAMS: dict[str, list[tuple]] = {
@@ -225,6 +233,9 @@ def render_condition_list(conditions: list[dict], logic: str, del_key: str):
 with st.sidebar:
     st.title("⚙️ Настройки")
 
+    exchange_name = st.selectbox("Биржа", list(EXCHANGES.keys()), index=0)
+    exchange_id   = EXCHANGES[exchange_name]
+
     asset     = st.selectbox("Актив", ASSETS)
     timeframe = st.selectbox("Таймфрейм", SUPPORTED_TIMEFRAMES,
                              index=SUPPORTED_TIMEFRAMES.index("1h"))
@@ -389,8 +400,8 @@ if run_btn:
 
     # ── Fetch data ────────────────────────────────────────────────────────
     try:
-        with st.spinner(f"Загрузка {asset} {timeframe} с Bybit…"):
-            df = fetch_ohlcv(asset, timeframe, str(start_date), str(end_date))
+        with st.spinner(f"Загрузка {asset} {timeframe} с {exchange_name}…"):
+            df = fetch_ohlcv(asset, timeframe, str(start_date), str(end_date), exchange_id=exchange_id)
     except ValueError as exc:
         st.error(f"Данные не получены: {exc}")
         st.stop()
