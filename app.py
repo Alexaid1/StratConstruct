@@ -63,6 +63,28 @@ OP_LABELS = {
     "crosses_below": "↓ пересекает вниз",
 }
 
+# ─── Example strategy ────────────────────────────────────────────────────────
+
+EXAMPLE_STRATEGY = {
+    "indicators": [
+        {"name": "RSI", "params": {"period": 14}},
+        {"name": "EMA", "params": {"period": 200}},
+    ],
+    "entry_conditions": [
+        {"indicator": "RSI_14", "operator": "<",  "value": 30.0},
+        {"indicator": "close",  "operator": ">",  "value": "EMA_200"},
+    ],
+    "entry_logic": "AND",
+    "exit_conditions": [
+        {"indicator": "RSI_14", "operator": ">", "value": 70.0},
+    ],
+    "exit_logic": "AND",
+    "tp_pct": 9.0,
+    "sl_pct": 3.0,
+    "sel_asset": "BTC/USDT",
+    "sel_timeframe": "1h",
+}
+
 # ─── Session state ────────────────────────────────────────────────────────────
 
 def _init_state():
@@ -75,6 +97,11 @@ def _init_state():
         "ohlcv_df":         None,
         "ai_comment":       None,
         "ai_strategy_hash": None,
+        # sidebar widget state
+        "sel_asset":        "BTC/USDT",
+        "sel_timeframe":    "1h",
+        "tp_pct":           0.0,
+        "sl_pct":           0.0,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -236,9 +263,8 @@ with st.sidebar:
     exchange_name = st.selectbox("Биржа", list(EXCHANGES.keys()), index=1)
     exchange_id   = EXCHANGES[exchange_name]
 
-    asset     = st.selectbox("Актив", ASSETS)
-    timeframe = st.selectbox("Таймфрейм", SUPPORTED_TIMEFRAMES,
-                             index=SUPPORTED_TIMEFRAMES.index("1h"))
+    asset     = st.selectbox("Актив", ASSETS, key="sel_asset")
+    timeframe = st.selectbox("Таймфрейм", SUPPORTED_TIMEFRAMES, key="sel_timeframe")
 
     st.markdown("**Период данных**")
     d1, d2 = st.columns(2)
@@ -266,6 +292,28 @@ with st.sidebar:
 
 st.title("📈 Конструктор торговых стратегий")
 st.caption("Собери стратегию из блоков, запусти бэктест, получи аналитику.")
+
+with st.container(border=True):
+    c1, c2 = st.columns([5, 1])
+    c1.markdown(
+        "**👋 Первый раз здесь?** Загрузи готовый пример — "
+        "классическая RSI + EMA стратегия на BTC/USDT"
+    )
+    if c2.button("Загрузить пример", use_container_width=True):
+        ex = EXAMPLE_STRATEGY
+        st.session_state.indicators       = [dict(i) for i in ex["indicators"]]
+        st.session_state.entry_conditions = [dict(c) for c in ex["entry_conditions"]]
+        st.session_state.exit_conditions  = [dict(c) for c in ex["exit_conditions"]]
+        st.session_state.entry_logic      = ex["entry_logic"]
+        st.session_state.exit_logic       = ex["exit_logic"]
+        st.session_state.tp_pct           = ex["tp_pct"]
+        st.session_state.sl_pct           = ex["sl_pct"]
+        st.session_state.sel_asset        = ex["sel_asset"]
+        st.session_state.sel_timeframe    = ex["sel_timeframe"]
+        st.session_state.result           = None
+        st.session_state.ai_comment       = None
+        st.rerun()
+
 st.divider()
 
 # ── 1. Indicators ─────────────────────────────────────────────────────────────
@@ -338,12 +386,12 @@ st.divider()
 st.subheader("3 · Условие выхода из позиции")
 
 tp_col, sl_col = st.columns(2)
-take_profit = tp_col.number_input("Тейк-профит (%)", value=0.0, min_value=0.0,
+take_profit = tp_col.number_input("Тейк-профит (%)", min_value=0.0,
                                    max_value=500.0, step=0.5, format="%.1f",
-                                   help="0 = не использовать")
-stop_loss   = sl_col.number_input("Стоп-лосс (%)",   value=0.0, min_value=0.0,
+                                   help="0 = не использовать", key="tp_pct")
+stop_loss   = sl_col.number_input("Стоп-лосс (%)",   min_value=0.0,
                                    max_value=100.0,  step=0.5, format="%.1f",
-                                   help="0 = не использовать")
+                                   help="0 = не использовать", key="sl_pct")
 
 if has_indicators:
     exit_logic = st.radio("Логика между условиями", ["AND", "OR"],
