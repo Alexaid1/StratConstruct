@@ -67,20 +67,19 @@ OP_LABELS = {
 
 EXAMPLE_STRATEGY = {
     "indicators": [
-        {"name": "RSI", "params": {"period": 14}},
-        {"name": "EMA", "params": {"period": 200}},
+        {"name": "EMA", "params": {"period": 20}},
+        {"name": "EMA", "params": {"period": 50}},
     ],
     "entry_conditions": [
-        {"indicator": "RSI_14", "operator": "<",  "value": 30.0},
-        {"indicator": "close",  "operator": ">",  "value": "EMA_200"},
+        {"indicator": "EMA_20", "operator": "crosses_above", "value": "EMA_50"},
     ],
     "entry_logic": "AND",
     "exit_conditions": [
-        {"indicator": "RSI_14", "operator": ">", "value": 70.0},
+        {"indicator": "EMA_20", "operator": "crosses_below", "value": "EMA_50"},
     ],
     "exit_logic": "AND",
-    "tp_pct": 9.0,
-    "sl_pct": 3.0,
+    "tp_pct": 0.0,
+    "sl_pct": 2.0,
     "sel_asset": "BTC/USDT",
     "sel_timeframe": "1h",
 }
@@ -304,7 +303,7 @@ with st.container(border=True):
     c1, c2 = st.columns([5, 1])
     c1.markdown(
         "**👋 Первый раз здесь?** Загрузи готовый пример — "
-        "классическая RSI + EMA стратегия на BTC/USDT"
+        "EMA-кроссовер (20/50) на BTC/USDT · гарантированно даёт сделки"
     )
     if c2.button("Загрузить пример", use_container_width=True):
         ex = EXAMPLE_STRATEGY
