@@ -233,7 +233,7 @@ def render_condition_list(conditions: list[dict], logic: str, del_key: str):
 with st.sidebar:
     st.title("⚙️ Настройки")
 
-    exchange_name = st.selectbox("Биржа", list(EXCHANGES.keys()), index=0)
+    exchange_name = st.selectbox("Биржа", list(EXCHANGES.keys()), index=1)
     exchange_id   = EXCHANGES[exchange_name]
 
     asset     = st.selectbox("Актив", ASSETS)
