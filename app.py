@@ -257,6 +257,13 @@ def render_condition_list(conditions: list[dict], logic: str, del_key: str):
 # SIDEBAR
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Consume pending values from the example button BEFORE widgets are instantiated.
+# Direct assignment to a keyed widget's session_state after instantiation raises
+# StreamlitAPIException — so we transfer via a "pending_*" intermediary.
+for _pending, _key in [("pending_asset", "sel_asset"), ("pending_timeframe", "sel_timeframe")]:
+    if _pending in st.session_state:
+        st.session_state[_key] = st.session_state.pop(_pending)
+
 with st.sidebar:
     st.title("⚙️ Настройки")
 
@@ -308,8 +315,8 @@ with st.container(border=True):
         st.session_state.exit_logic       = ex["exit_logic"]
         st.session_state.tp_pct           = ex["tp_pct"]
         st.session_state.sl_pct           = ex["sl_pct"]
-        st.session_state.sel_asset        = ex["sel_asset"]
-        st.session_state.sel_timeframe    = ex["sel_timeframe"]
+        st.session_state["pending_asset"]     = ex["sel_asset"]
+        st.session_state["pending_timeframe"] = ex["sel_timeframe"]
         st.session_state.result           = None
         st.session_state.ai_comment       = None
         st.rerun()
