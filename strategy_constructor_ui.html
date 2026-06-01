@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StratOS — Конструктор стратегий</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --surface: #111418;
+    --surface2: #181c22;
+    --border: #1e242d;
+    --accent: #00e5a0;
+    --accent2: #ff6b35;
+    --accent3: #4d8fff;
+    --text: #e8edf5;
+    --text-muted: #556070;
+    --text-dim: #8a96a8;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* NAV */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 56px;
+    background: rgba(10,12,15,0.9);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 32px;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .logo-dot {
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.7); }
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 24px;
+    margin-left: auto;
+    list-style: none;
+  }
+
+  .nav-links a {
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--text-dim);
+    text-decoration: none;
+    letter-spacing: 0.05em;
+    transition: color 0.2s;
+  }
+
+  .nav-links a:hover { color: var(--text); }
+
+  .nav-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    padding: 7px 16px;
+    cursor: pointer;
+    font-weight: 700;
+    transition: all 0.15s;
+  }
+
+  .nav-btn:hover { background: #00ffb3; }
+
+  /* MAIN LAYOUT */
+  .app {
+    display: grid;
+    grid-template-columns: 280px 1fr 320px;
+    grid-template-rows: 56px 1fr;
+    height: 100vh;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* LEFT PANEL */
+  .panel-left {
+    grid-row: 2;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideIn 0.4s ease both;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-16px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .panel-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  .panel-count {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    background: rgba(0,229,160,0.1);
+    padding: 2px 8px;
+  }
+
+  .search-box {
+    margin: 12px 16px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  .search-box input {
+    background: none;
+    border: none;
+    outline: none;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    width: 100%;
+  }
+
+  .search-box input::placeholder { color: var(--text-muted); }
+
+  .search-icon { color: var(--text-muted); font-size: 12px; }
+
+  .indicator-list {
+    overflow-y: auto;
+    flex: 1;
+    padding: 8px;
+  }
+
+  .indicator-list::-webkit-scrollbar { width: 4px; }
+  .indicator-list::-webkit-scrollbar-track { background: transparent; }
+  .indicator-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .ind-category {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    padding: 12px 12px 6px;
+  }
+
+  .ind-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    margin-bottom: 2px;
+  }
+
+  .ind-item:hover {
+    background: var(--surface2);
+    border-color: var(--border);
+  }
+
+  .ind-item.active {
+    background: rgba(0,229,160,0.06);
+    border-color: rgba(0,229,160,0.25);
+  }
+
+  .ind-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+  }
+
+  .ind-item.active .ind-name { color: var(--accent); }
+
+  .ind-tag {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  .ind-tag.momentum { border-color: rgba(255,107,53,0.4); color: var(--accent2); }
+  .ind-tag.trend { border-color: rgba(77,143,255,0.4); color: var(--accent3); }
+  .ind-tag.volatility { border-color: rgba(0,229,160,0.4); color: var(--accent); }
+
+  /* CENTER */
+  .panel-center {
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: fadeUp 0.5s ease 0.1s both;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Asset bar */
+  .asset-bar {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .asset-select {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .asset-badge {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, #f7931a, #ff6b35);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    color: #000;
+  }
+
+  .asset-name {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .asset-price {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+  }
+
+  .asset-change {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(0,229,160,0.1);
+    padding: 2px 8px;
+  }
+
+  .asset-change.neg { color: #ff4d6d; background: rgba(255,77,109,0.1); }
+
+  .tf-buttons {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+  }
+
+  .tf-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 10px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .tf-btn:hover { border-color: var(--text-dim); color: var(--text); }
+  .tf-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,160,0.08); }
+
+  /* Chart area */
+  .chart-area {
+    flex: 1;
+    background: var(--bg);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .chart-placeholder {
+    width: 100%;
+    height: 100%;
+    position: relative;
+  }
+
+  /* Fake chart SVG */
+  .chart-svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Strategy builder */
+  .strategy-builder {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 16px 24px;
+    max-height: 220px;
+  }
+
+  .builder-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .builder-tab {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: 8px 16px;
+    cursor: pointer;
+    color: var(--text-muted);
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+
+  .builder-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .conditions-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+
+  .cond-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    transition: border-color 0.15s;
+  }
+
+  .cond-chip:hover { border-color: var(--accent); }
+
+  .cond-chip .chip-label { color: var(--accent3); }
+  .cond-chip .chip-op { color: var(--text-muted); }
+  .cond-chip .chip-val { color: var(--accent2); }
+
+  .cond-remove {
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    margin-left: 4px;
+  }
+  .cond-remove:hover { color: #ff4d6d; }
+
+  .cond-connector {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    background: rgba(0,229,160,0.1);
+    padding: 4px 8px;
+    letter-spacing: 0.1em;
+  }
+
+  .add-condition {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    background: none;
+    border: 1px dashed var(--border);
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+
+  .add-condition:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* RIGHT PANEL */
+  .panel-right {
+    grid-row: 2;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: slideInRight 0.4s ease 0.15s both;
+  }
+
+  @keyframes slideInRight {
+    from { opacity: 0; transform: translateX(16px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .metric-cell {
+    background: var(--surface);
+    padding: 16px;
+    transition: background 0.15s;
+  }
+
+  .metric-cell:hover { background: var(--surface2); }
+
+  .metric-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .metric-value {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .metric-value.positive { color: var(--accent); }
+  .metric-value.negative { color: #ff4d6d; }
+
+  .metric-sub {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  /* Equity curve mini */
+  .equity-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .equity-svg {
+    width: 100%;
+    height: 64px;
+  }
+
+  /* AI Analysis */
+  .ai-section {
+    flex: 1;
+    padding: 16px 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .ai-section::-webkit-scrollbar { width: 4px; }
+  .ai-section::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .ai-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ai-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    color: #000;
+    background: var(--accent);
+    padding: 2px 8px;
+    font-weight: 700;
+  }
+
+  .ai-score {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent2);
+  }
+
+  .ai-comment {
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text-dim);
+  }
+
+  .ai-comment strong { color: var(--text); font-weight: 600; }
+
+  .ai-recs {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .ai-rec {
+    display: flex;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border-left: 2px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    transition: border-color 0.15s;
+  }
+
+  .ai-rec:hover { border-left-color: var(--accent); }
+
+  .ai-rec-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    min-width: 16px;
+  }
+
+  /* Run button */
+  .run-section {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  .run-btn {
+    width: 100%;
+    background: var(--accent);
+    border: none;
+    color: #000;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    padding: 14px;
+    cursor: pointer;
+    text-transform: uppercase;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s;
+  }
+
+  .run-btn::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+    transition: left 0.4s;
+  }
+
+  .run-btn:hover::before { left: 100%; }
+  .run-btn:hover { background: #00ffb3; transform: translateY(-1px); }
+  .run-btn:active { transform: translateY(0); }
+
+  .date-range {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .date-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 7px 10px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    outline: none;
+    width: 100%;
+    transition: border-color 0.15s;
+  }
+
+  .date-input:focus { border-color: var(--accent); color: var(--text); }
+
+  /* Active indicators panel */
+  .active-inds {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .active-ind-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0,229,160,0.08);
+    border: 1px solid rgba(0,229,160,0.2);
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .active-ind-chip:hover { background: rgba(0,229,160,0.15); }
+
+  .chip-x { color: rgba(0,229,160,0.5); margin-left: 2px; }
+  .chip-x:hover { color: #ff4d6d; }
+
+  /* Decorative scan line */
+  .scan-line {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scan 4s ease-in-out infinite;
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  @keyframes scan {
+    0% { top: 0%; opacity: 0; }
+    10% { opacity: 0.4; }
+    90% { opacity: 0.4; }
+    100% { top: 100%; opacity: 0; }
+  }
+
+  /* Tooltip style info */
+  .info-tip {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--text-muted);
+    text-align: center;
+    line-height: 13px;
+    cursor: help;
+    margin-left: 4px;
+    transition: all 0.15s;
+  }
+  .info-tip:hover { border-color: var(--accent3); color: var(--accent3); }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    STRATOS
+  </div>
+  <ul class="nav-links">
+    <li><a href="#">Конструктор</a></li>
+    <li><a href="#">Мои стратегии</a></li>
+    <li><a href="#">Документация</a></li>
+  </ul>
+  <button class="nav-btn">ВОЙТИ</button>
+</nav>
+
+<div class="app">
+
+  <!-- LEFT: Indicator Library -->
+  <div class="panel-left">
+    <div class="panel-header">
+      <span class="panel-title">Индикаторы</span>
+      <span class="panel-count">10</span>
+    </div>
+    <div class="search-box">
+      <span class="search-icon">⌕</span>
+      <input type="text" placeholder="Поиск...">
+    </div>
+
+    <!-- Active indicators -->
+    <div class="active-inds">
+      <div class="active-ind-chip">RSI(14) <span class="chip-x">✕</span></div>
+      <div class="active-ind-chip">EMA(200) <span class="chip-x">✕</span></div>
+      <div class="active-ind-chip">MACD <span class="chip-x">✕</span></div>
+    </div>
+
+    <div class="indicator-list">
+      <div class="ind-category">Momentum</div>
+
+      <div class="ind-item active">
+        <span class="ind-name">RSI</span>
+        <span class="ind-tag momentum">momentum</span>
+      </div>
+      <div class="ind-item active">
+        <span class="ind-name">MACD</span>
+        <span class="ind-tag momentum">momentum</span>
+      </div>
+      <div class="ind-item">
+        <span class="ind-name">Stochastic</span>
+        <span class="ind-tag momentum">momentum</span>
+      </div>
+      <div class="ind-item">
+        <span class="ind-name">CCI</span>
+        <span class="ind-tag momentum">momentum</span>
+      </div>
+
+      <div class="ind-category">Trend</div>
+
+      <div class="ind-item active">
+        <span class="ind-name">EMA</span>
+        <span class="ind-tag trend">trend</span>
+      </div>
+      <div class="ind-item">
+        <span class="ind-name">SMA</span>
+        <span class="ind-tag trend">trend</span>
+      </div>
+      <div class="ind-item">
+        <span class="ind-name">Supertrend</span>
+        <span class="ind-tag trend">trend</span>
+      </div>
+
+      <div class="ind-category">Volatility</div>
+
+      <div class="ind-item">
+        <span class="ind-name">Bollinger Bands</span>
+        <span class="ind-tag volatility">volatility</span>
+      </div>
+      <div class="ind-item">
+        <span class="ind-name">ATR</span>
+        <span class="ind-tag volatility">volatility</span>
+      </div>
+
+      <div class="ind-category">Volume</div>
+
+      <div class="ind-item">
+        <span class="ind-name">Volume SMA</span>
+        <span class="ind-tag">volume</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER: Chart + Builder -->
+  <div class="panel-center">
+    <!-- Asset bar -->
+    <div class="asset-bar">
+      <div class="asset-select">
+        <div class="asset-badge">BTC</div>
+        <div>
+          <div class="asset-name">BTC/USDT</div>
+        </div>
+      </div>
+      <div class="asset-price">$67,420</div>
+      <div class="asset-change">+2.34%</div>
+
+      <div class="tf-buttons">
+        <button class="tf-btn">15m</button>
+        <button class="tf-btn">1h</button>
+        <button class="tf-btn active">4h</button>
+        <button class="tf-btn">1d</button>
+        <button class="tf-btn">1w</button>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-area">
+      <div class="scan-line"></div>
+      <div class="chart-placeholder">
+        <svg class="chart-svg" viewBox="0 0 800 320" preserveAspectRatio="none">
+          <!-- Grid lines -->
+          <line x1="0" y1="80" x2="800" y2="80" stroke="#1e242d" stroke-width="1"/>
+          <line x1="0" y1="160" x2="800" y2="160" stroke="#1e242d" stroke-width="1"/>
+          <line x1="0" y1="240" x2="800" y2="240" stroke="#1e242d" stroke-width="1"/>
+          <line x1="160" y1="0" x2="160" y2="320" stroke="#1e242d" stroke-width="1"/>
+          <line x1="320" y1="0" x2="320" y2="320" stroke="#1e242d" stroke-width="1"/>
+          <line x1="480" y1="0" x2="480" y2="320" stroke="#1e242d" stroke-width="1"/>
+          <line x1="640" y1="0" x2="640" y2="320" stroke="#1e242d" stroke-width="1"/>
+
+          <!-- Area fill -->
+          <defs>
+            <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#00e5a0" stop-opacity="0.15"/>
+              <stop offset="100%" stop-color="#00e5a0" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Price area -->
+          <path d="M0,220 C30,210 50,230 80,200 C110,170 130,180 160,150 C190,120 210,140 240,110 C270,80 290,100 320,90 C350,80 370,130 400,120 C430,110 450,90 480,70 C510,50 530,80 560,60 C590,40 610,70 640,50 C670,30 690,60 720,40 C750,20 770,50 800,30 L800,320 L0,320 Z" fill="url(#areaGrad)"/>
+
+          <!-- Price line -->
+          <path d="M0,220 C30,210 50,230 80,200 C110,170 130,180 160,150 C190,120 210,140 240,110 C270,80 290,100 320,90 C350,80 370,130 400,120 C430,110 450,90 480,70 C510,50 530,80 560,60 C590,40 610,70 640,50 C670,30 690,60 720,40 C750,20 770,50 800,30" fill="none" stroke="#00e5a0" stroke-width="1.5"/>
+
+          <!-- EMA line -->
+          <path d="M0,230 C80,210 160,190 240,165 C320,140 400,125 480,105 C560,85 640,70 720,55 C760,47 780,42 800,38" fill="none" stroke="#4d8fff" stroke-width="1" stroke-dasharray="4,3" opacity="0.7"/>
+
+          <!-- Entry points (green triangles) -->
+          <polygon points="160,145 155,158 165,158" fill="#00e5a0" opacity="0.9"/>
+          <polygon points="400,115 395,128 405,128" fill="#00e5a0" opacity="0.9"/>
+          <polygon points="640,45 635,58 645,58" fill="#00e5a0" opacity="0.9"/>
+
+          <!-- Exit points (red triangles, inverted) -->
+          <polygon points="310,95 305,82 315,82" fill="#ff4d6d" opacity="0.9"/>
+          <polygon points="560,65 555,52 565,52" fill="#ff4d6d" opacity="0.9"/>
+
+          <!-- RSI subplot -->
+          <rect x="0" y="270" width="800" height="50" fill="rgba(17,20,24,0.8)"/>
+          <line x1="0" y1="270" x2="800" y2="270" stroke="#1e242d" stroke-width="1"/>
+          <line x1="0" y1="280" x2="800" y2="280" stroke="rgba(255,77,109,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
+          <line x1="0" y1="310" x2="800" y2="310" stroke="rgba(0,229,160,0.2)" stroke-width="1" stroke-dasharray="3,3"/>
+          <path d="M0,295 C40,285 80,300 120,290 C160,280 200,295 240,285 C280,275 320,292 360,288 C400,284 440,295 480,282 C520,269 560,290 600,278 C640,266 680,280 720,272 C760,264 780,276 800,270" fill="none" stroke="#ff6b35" stroke-width="1.2" opacity="0.8"/>
+
+          <!-- Labels -->
+          <text x="8" y="278" font-family="monospace" font-size="8" fill="#556070">RSI(14)</text>
+          <text x="8" y="289" font-family="monospace" font-size="8" fill="rgba(255,77,109,0.6)">70</text>
+          <text x="8" y="311" font-family="monospace" font-size="8" fill="rgba(0,229,160,0.6)">30</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Strategy builder -->
+    <div class="strategy-builder">
+      <div class="builder-tabs">
+        <button class="builder-tab active">Вход в позицию</button>
+        <button class="builder-tab">Выход из позиции</button>
+        <button class="builder-tab">Риск-менеджмент</button>
+      </div>
+
+      <div class="conditions-row">
+        <div class="cond-chip">
+          <span class="chip-label">RSI</span>
+          <span class="chip-op">&lt;</span>
+          <span class="chip-val">30</span>
+          <span class="cond-remove">✕</span>
+        </div>
+        <div class="cond-connector">И</div>
+        <div class="cond-chip">
+          <span class="chip-label">Цена</span>
+          <span class="chip-op">&gt;</span>
+          <span class="chip-val">EMA(200)</span>
+          <span class="cond-remove">✕</span>
+        </div>
+        <div class="cond-connector">И</div>
+        <div class="cond-chip">
+          <span class="chip-label">MACD</span>
+          <span class="chip-op">пересечение ↑</span>
+          <span class="chip-val">сигнал</span>
+          <span class="cond-remove">✕</span>
+        </div>
+        <button class="add-condition">+ условие</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Metrics + AI -->
+  <div class="panel-right">
+    <!-- Metrics grid -->
+    <div class="metrics-grid">
+      <div class="metric-cell">
+        <div class="metric-label">Доходность</div>
+        <div class="metric-value positive">+84.3%</div>
+        <div class="metric-sub">за период</div>
+      </div>
+      <div class="metric-cell">
+        <div class="metric-label">Просадка</div>
+        <div class="metric-value negative">-18.2%</div>
+        <div class="metric-sub">максимальная</div>
+      </div>
+      <div class="metric-cell">
+        <div class="metric-label">Сделок</div>
+        <div class="metric-value">47</div>
+        <div class="metric-sub">всего</div>
+      </div>
+      <div class="metric-cell">
+        <div class="metric-label">Win Rate</div>
+        <div class="metric-value positive">61%</div>
+        <div class="metric-sub">прибыльных</div>
+      </div>
+    </div>
+
+    <!-- Equity curve -->
+    <div class="equity-section">
+      <div class="section-label">Кривая доходности</div>
+      <svg class="equity-svg" viewBox="0 0 280 64" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="eqGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#00e5a0" stop-opacity="0.2"/>
+            <stop offset="100%" stop-color="#00e5a0" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M0,55 C20,52 35,48 50,44 C65,40 75,46 90,38 C105,30 115,34 130,26 C145,18 155,24 170,16 C185,8 195,18 210,12 C225,6 240,10 255,6 C265,4 272,5 280,3 L280,64 L0,64 Z" fill="url(#eqGrad)"/>
+        <path d="M0,55 C20,52 35,48 50,44 C65,40 75,46 90,38 C105,30 115,34 130,26 C145,18 155,24 170,16 C185,8 195,18 210,12 C225,6 240,10 255,6 C265,4 272,5 280,3" fill="none" stroke="#00e5a0" stroke-width="1.5"/>
+      </svg>
+    </div>
+
+    <!-- AI Analysis -->
+    <div class="ai-section">
+      <div class="ai-header">
+        <span class="ai-badge">AI АНАЛИЗ</span>
+        <span class="ai-score">7.2 / 10</span>
+      </div>
+
+      <div class="ai-comment">
+        Стратегия показывает <strong>стабильный восходящий тренд</strong> на тестовом периоде. Win rate 61% при соотношении прибыль/убыток 1.8 — это рабочая комбинация. Просадка 18% умеренная, но возникает в периоды высокой волатильности когда RSI долго не выходит из зоны перепроданности.
+      </div>
+
+      <div class="section-label" style="margin-top: 4px;">Рекомендации</div>
+
+      <div class="ai-recs">
+        <div class="ai-rec">
+          <span class="ai-rec-num">01</span>
+          <span>Добавьте фильтр по объёму — Volume SMA поможет отсеять ложные сигналы в периоды низкой ликвидности</span>
+        </div>
+        <div class="ai-rec">
+          <span class="ai-rec-num">02</span>
+          <span>Попробуйте RSI(21) вместо RSI(14) — на 4h таймфрейме даёт меньше шума</span>
+        </div>
+        <div class="ai-rec">
+          <span class="ai-rec-num">03</span>
+          <span>Стоп-лосс 3% выглядит жёстко для BTC/4h. Рассмотрите ATR × 1.5 как динамический стоп</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Run backtest -->
+    <div class="run-section">
+      <div class="date-range">
+        <input type="text" class="date-input" value="01.01.2023" placeholder="От">
+        <input type="text" class="date-input" value="01.01.2024" placeholder="До">
+      </div>
+      <button class="run-btn">▶ ЗАПУСТИТЬ БЭКТЕСТ</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Tab switching
+  document.querySelectorAll('.builder-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.builder-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+    });
+  });
+
+  // Timeframe buttons
+  document.querySelectorAll('.tf-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // Indicator toggle
+  document.querySelectorAll('.ind-item').forEach(item => {
+    item.addEventListener('click', () => {
+      item.classList.toggle('active');
+    });
+  });
+
+  // Run button animation
+  const runBtn = document.querySelector('.run-btn');
+  runBtn.addEventListener('click', () => {
+    runBtn.textContent = '⟳ ЗАГРУЗКА ДАННЫХ...';
+    runBtn.style.background = '#1e242d';
+    runBtn.style.color = '#00e5a0';
+    setTimeout(() => {
+      runBtn.textContent = '▶ ЗАПУСТИТЬ БЭКТЕСТ';
+      runBtn.style.background = '';
+      runBtn.style.color = '';
+    }, 2000);
+  });
+</script>
+
+</body>
+</html>
