@@ -538,13 +538,20 @@ if st.session_state.result is not None:
     else:
         color = "normal" if result.total_return_pct >= 0 else "inverse"
         m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-        m1.metric("Доходность",     f"{result.total_return_pct:+.2f}%", delta_color=color)
-        m2.metric("Сделок",         result.num_trades)
-        m3.metric("Прибыльных",     f"{result.win_rate_pct:.1f}%")
-        m4.metric("Макс. просадка", f"{result.max_drawdown_pct:.2f}%")
-        m5.metric("Sharpe",         f"{result.sharpe_ratio:.3f}")
-        m6.metric("Ср. выигрыш",    f"{result.avg_win_pct:+.2f}%")
-        m7.metric("Ср. проигрыш",   f"{result.avg_loss_pct:+.2f}%")
+        m1.metric("Доходность",     f"{result.total_return_pct:+.2f}%", delta_color=color,
+                  help="Итоговый прирост или убыток капитала за весь период бэктеста.")
+        m2.metric("Сделок",         result.num_trades,
+                  help="Общее количество открытых и закрытых позиций.")
+        m3.metric("Прибыльных",     f"{result.win_rate_pct:.1f}%",
+                  help="Доля сделок, закрытых с прибылью. Выше 50% означает, что стратегия чаще угадывает направление.")
+        m4.metric("Макс. просадка", f"{result.max_drawdown_pct:.2f}%",
+                  help="Максимальное падение капитала от пика до дна в процентах. Показывает худший сценарий потерь, который пережил бы трейдер.")
+        m5.metric("Sharpe",         f"{result.sharpe_ratio:.3f}",
+                  help="Коэффициент Шарпа — доходность относительно риска. До 1: слабо, 1–2: хорошо, выше 2: отлично. Отрицательный — стратегия хуже депозита.")
+        m6.metric("Ср. выигрыш",    f"{result.avg_win_pct:+.2f}%",
+                  help="Средний процент прибыли на одну прибыльную сделку.")
+        m7.metric("Ср. проигрыш",   f"{result.avg_loss_pct:+.2f}%",
+                  help="Средний процент убытка на одну убыточную сделку. Сравни с «Ср. выигрышем»: если выигрыш больше — стратегия имеет положительное матожидание.")
 
         st.plotly_chart(build_chart(ohlcv, result, enriched), use_container_width=True)
 
