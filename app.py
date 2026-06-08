@@ -24,7 +24,13 @@ st.set_page_config(
 
 # ─── Constants ────────────────────────────────────────────────────────────────
 
-ASSETS = ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT"]
+ASSETS = [
+    "BTC/USDT",  "ETH/USDT",  "SOL/USDT",  "BNB/USDT",  "XRP/USDT",
+    "DOGE/USDT", "ADA/USDT",  "AVAX/USDT", "DOT/USDT",  "MATIC/USDT",
+    "LINK/USDT", "UNI/USDT",  "ATOM/USDT", "LTC/USDT",  "BCH/USDT",
+    "FIL/USDT",  "NEAR/USDT", "APT/USDT",  "ARB/USDT",  "OP/USDT",
+    "SUI/USDT",  "TON/USDT",  "TRX/USDT",  "ETC/USDT",  "INJ/USDT",
+]
 
 EXCHANGES = {
     "Binance":  "binance",
@@ -299,13 +305,22 @@ with st.sidebar:
 st.title("📈 Конструктор торговых стратегий")
 st.caption("Собери стратегию из блоков, запусти бэктест, получи аналитику.")
 
+st.markdown(
+    """
+    <style>
+    div[data-testid="stButton"] button[kind="secondaryFormSubmit"],
+    .example-btn button { background: #00e5a0 !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 with st.container(border=True):
-    c1, c2 = st.columns([5, 1])
-    c1.markdown(
-        "**👋 Первый раз здесь?** Загрузи готовый пример — "
-        "EMA-кроссовер (20/50) на BTC/USDT · гарантированно даёт сделки"
+    st.markdown(
+        "### 👋 Первый раз здесь?\n"
+        "Загрузи готовый пример и сразу запусти бэктест — "
+        "**EMA-кроссовер (20/50) на BTC/USDT**"
     )
-    if c2.button("Загрузить пример", use_container_width=True):
+    if st.button("▶ Загрузить пример и запустить", type="primary", use_container_width=True):
         ex = EXAMPLE_STRATEGY
         st.session_state.indicators       = [dict(i) for i in ex["indicators"]]
         st.session_state.entry_conditions = [dict(c) for c in ex["entry_conditions"]]
@@ -522,14 +537,14 @@ if st.session_state.result is not None:
         )
     else:
         color = "normal" if result.total_return_pct >= 0 else "inverse"
-        m1, m2, m3, m4, m5, m6 = st.columns(6)
-        m1.metric("Доходность",      f"{result.total_return_pct:+.2f}%", delta_color=color)
-        m2.metric("Сделок",          result.num_trades)
-        m3.metric("Прибыльных",      f"{result.win_rate_pct:.1f}%")
-        m4.metric("Макс. просадка",  f"{result.max_drawdown_pct:.2f}%")
-        m5.metric("Sharpe Ratio",    f"{result.sharpe_ratio:.3f}")
-        m6.metric("Ср. выигрыш / проигрыш",
-                  f"{result.avg_win_pct:+.2f}% / {result.avg_loss_pct:+.2f}%")
+        m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
+        m1.metric("Доходность",     f"{result.total_return_pct:+.2f}%", delta_color=color)
+        m2.metric("Сделок",         result.num_trades)
+        m3.metric("Прибыльных",     f"{result.win_rate_pct:.1f}%")
+        m4.metric("Макс. просадка", f"{result.max_drawdown_pct:.2f}%")
+        m5.metric("Sharpe",         f"{result.sharpe_ratio:.3f}")
+        m6.metric("Ср. выигрыш",    f"{result.avg_win_pct:+.2f}%")
+        m7.metric("Ср. проигрыш",   f"{result.avg_loss_pct:+.2f}%")
 
         st.plotly_chart(build_chart(ohlcv, result, enriched), use_container_width=True)
 
