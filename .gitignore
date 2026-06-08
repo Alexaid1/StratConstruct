@@ -14,8 +14,8 @@ dist/
 build/
 .eggs/
 
-# Streamlit local cache
-.streamlit/
+# Streamlit — secrets только локально, config коммитим
+.streamlit/secrets.toml
 
 # IDE
 .vscode/
