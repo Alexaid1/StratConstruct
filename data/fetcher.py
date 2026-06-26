@@ -26,14 +26,22 @@ def fetch_ohlcv(
     end_ts = int(datetime.strptime(end_date, "%Y-%m-%d").timestamp() * 1000)
 
     all_ohlcv = []
-    while True:
+    prev_last_ts: int | None = None
+    while since < end_ts:
         batch = exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=1000)
         if not batch:
             break
         all_ohlcv.extend(batch)
         last_ts = batch[-1][0]
-        if last_ts >= end_ts or len(batch) < 1000:
+        # Stop once we've covered the requested range.
+        if last_ts >= end_ts:
             break
+        # Guard against exchanges that return short pages (OKX caps at 100–300
+        # per request, not 1000) — keep paginating regardless of page size, but
+        # bail if the cursor stops advancing to avoid an infinite loop.
+        if prev_last_ts is not None and last_ts <= prev_last_ts:
+            break
+        prev_last_ts = last_ts
         since = last_ts + 1
 
     if not all_ohlcv:
