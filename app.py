@@ -1,3 +1,4 @@
+import hashlib
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -165,6 +166,32 @@ def inject_css() -> None:
 
 inject_css()
 
+# ─── AI cost protection ──────────────────────────────────────────────────────
+# Приложение публичное, а AI-анализ ходит в Claude по нашему ключу — значит
+# каждый клик стоит денег. Три рубежа защиты от слива кредитов:
+#   1) кэш одинаковых запросов — повтор того же анализа бесплатен;
+#   2) лимит на сессию — один посетитель не зальёт спамом;
+#   3) глобальный дневной потолок — общий предохранитель на бюджет.
+
+AI_DAILY_LIMIT   = 150   # макс. вызовов AI в сутки на всё приложение
+AI_SESSION_LIMIT = 5     # макс. вызовов AI на одну пользовательскую сессию
+
+
+@st.cache_resource
+def _ai_store() -> dict:
+    """Состояние, общее для всех сессий (Streamlit Cloud = один процесс):
+    дневной счётчик вызовов и кэш результатов по сигнатуре стратегии."""
+    return {"date": "", "count": 0, "cache": {}}
+
+
+def ai_budget_left() -> int:
+    """Сколько вызовов AI осталось на сегодня (счётчик сбрасывается в полночь)."""
+    store = _ai_store()
+    today = str(date.today())
+    if store["date"] != today:
+        store["date"], store["count"] = today, 0
+    return AI_DAILY_LIMIT - store["count"]
+
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 ASSETS = [
@@ -245,6 +272,7 @@ def _init_state():
         "ohlcv_df":         None,
         "ai_comment":       None,
         "ai_strategy_hash": None,
+        "ai_calls":         0,    # счётчик AI-вызовов в этой сессии (лимит расхода)
         # sidebar widget state
         "sel_asset":        "BTC/USDT",
         "sel_timeframe":    "1h",
@@ -742,22 +770,56 @@ if st.session_state.result is not None:
                     stop_loss_pct=stop_loss     if stop_loss   > 0 else None,
                 )
 
-                with st.spinner("Claude анализирует стратегию…"):
-                    try:
-                        comment = analyze_strategy(
-                            result=result,
-                            strategy=strategy_obj,
-                            asset=asset,
-                            timeframe=timeframe,
-                            start_date=str(start_date),
-                            end_date=str(end_date),
-                            initial_capital=capital,
-                        )
-                        st.session_state.ai_comment = comment
-                        track("ai_analysis", f"{asset} {timeframe}")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Ошибка AI-анализа: {exc}")
+                # Сигнатура входных данных AI: тот же набор → тот же ответ.
+                sig_src = repr([
+                    st.session_state.indicators,
+                    st.session_state.entry_conditions,
+                    st.session_state.exit_conditions,
+                    st.session_state.get("entry_logic"),
+                    st.session_state.get("exit_logic"),
+                    take_profit, stop_loss, asset, timeframe,
+                    str(start_date), str(end_date), capital,
+                ])
+                sig = hashlib.sha256(sig_src.encode()).hexdigest()
+                store = _ai_store()
+
+                if sig in store["cache"]:
+                    # Рубеж 1: точно такой анализ уже делали — отдаём из кэша даром.
+                    st.session_state.ai_comment = store["cache"][sig]
+                    st.rerun()
+                elif st.session_state.ai_calls >= AI_SESSION_LIMIT:
+                    # Рубеж 2: лимит на одну сессию.
+                    st.warning(
+                        f"Достигнут лимит AI-анализов на сессию ({AI_SESSION_LIMIT}). "
+                        "Обнови страницу, чтобы начать заново."
+                    )
+                elif ai_budget_left() <= 0:
+                    # Рубеж 3: общий дневной потолок исчерпан.
+                    st.warning(
+                        "На сегодня лимит AI-анализов исчерпан 🙏 Загляни завтра — "
+                        "счётчик обнулится. (Бэктест работает без ограничений.)"
+                    )
+                else:
+                    with st.spinner("Claude анализирует стратегию…"):
+                        try:
+                            comment = analyze_strategy(
+                                result=result,
+                                strategy=strategy_obj,
+                                asset=asset,
+                                timeframe=timeframe,
+                                start_date=str(start_date),
+                                end_date=str(end_date),
+                                initial_capital=capital,
+                            )
+                            # Учитываем расход: и в общий счётчик, и в кэш, и в сессию.
+                            store["count"] += 1
+                            store["cache"][sig] = comment
+                            st.session_state.ai_calls += 1
+                            st.session_state.ai_comment = comment
+                            track("ai_analysis", f"{asset} {timeframe}")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Ошибка AI-анализа: {exc}")
 
     # ── Feedback ────────────────────────────────────────────────────────────────
     st.divider()
