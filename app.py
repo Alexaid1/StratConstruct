@@ -683,20 +683,25 @@ if st.session_state.result is not None:
         )
     else:
         color = "normal" if result.total_return_pct >= 0 else "inverse"
-        m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-        m1.metric("Доходность",     f"{result.total_return_pct:+.2f}%", delta_color=color,
+        # Два ряда по 4 колонки: широкие карточки, значения и подписи не обрезаются.
+        # Ряд 1 — итог и риск; ряд 2 — статистика по сделкам (4-я ячейка пустая
+        # ради выравнивания ширины карточек с верхним рядом).
+        r1 = st.columns(4)
+        r1[0].metric("Доходность",     f"{result.total_return_pct:+.2f}%", delta_color=color,
                   help="Итоговый прирост или убыток капитала за весь период бэктеста.")
-        m2.metric("Сделок",         result.num_trades,
+        r1[1].metric("Сделок",         result.num_trades,
                   help="Общее количество открытых и закрытых позиций.")
-        m3.metric("Прибыльных",     f"{result.win_rate_pct:.1f}%",
-                  help="Доля сделок, закрытых с прибылью. Выше 50% означает, что стратегия чаще угадывает направление.")
-        m4.metric("Макс. просадка", f"{result.max_drawdown_pct:.2f}%",
+        r1[2].metric("Макс. просадка", f"{result.max_drawdown_pct:.2f}%",
                   help="Максимальное падение капитала от пика до дна в процентах. Показывает худший сценарий потерь, который пережил бы трейдер.")
-        m5.metric("Sharpe",         f"{result.sharpe_ratio:.3f}",
+        r1[3].metric("Sharpe",         f"{result.sharpe_ratio:.3f}",
                   help="Коэффициент Шарпа — доходность относительно риска. До 1: слабо, 1–2: хорошо, выше 2: отлично. Отрицательный — стратегия хуже депозита.")
-        m6.metric("Ср. выигрыш",    f"{result.avg_win_pct:+.2f}%",
+
+        r2 = st.columns(4)
+        r2[0].metric("Прибыльных",     f"{result.win_rate_pct:.1f}%",
+                  help="Доля сделок, закрытых с прибылью. Выше 50% означает, что стратегия чаще угадывает направление.")
+        r2[1].metric("Ср. выигрыш",    f"{result.avg_win_pct:+.2f}%",
                   help="Средний процент прибыли на одну прибыльную сделку.")
-        m7.metric("Ср. проигрыш",   f"{result.avg_loss_pct:+.2f}%",
+        r2[2].metric("Ср. проигрыш",   f"{result.avg_loss_pct:+.2f}%",
                   help="Средний процент убытка на одну убыточную сделку. Сравни с «Ср. выигрышем»: если выигрыш больше — стратегия имеет положительное матожидание.")
 
         st.plotly_chart(build_chart(ohlcv, result, enriched), use_container_width=True)
