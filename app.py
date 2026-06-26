@@ -11,8 +11,19 @@ from strategy.compiler import compile_strategy
 from strategy.validator import validate, ValidationIssue
 from backtester.engine import run_backtest
 from ai.analyzer import analyze_strategy
+from analytics.telegram import track, send_feedback
 
 load_dotenv()
+
+# На Streamlit Cloud .env не деплоится — креды берём из Secrets и пробрасываем в окружение,
+# чтобы модуль аналитики (он не зависит от Streamlit) их увидел через os.getenv.
+import os as _os
+try:
+    for _k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+        if _k in st.secrets and not _os.getenv(_k):
+            _os.environ[_k] = str(st.secrets[_k])
+except Exception:
+    pass  # secrets.toml может отсутствовать локально — это нормально
 
 # ─── Page config ─────────────────────────────────────────────────────────────
 
@@ -113,6 +124,11 @@ def _init_state():
             st.session_state[k] = v
 
 _init_state()
+
+# Событие воронки «зашёл» — ровно один раз за сессию.
+if "tracked_session" not in st.session_state:
+    st.session_state.tracked_session = True
+    track("session_start", "Новый визит")
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -333,6 +349,7 @@ with st.container(border=True):
         st.session_state["pending_timeframe"] = ex["sel_timeframe"]
         st.session_state.result           = None
         st.session_state.ai_comment       = None
+        track("example_loaded", "EMA 20/50, BTC/USDT 1h")
         st.rerun()
 
 st.divider()
@@ -519,6 +536,12 @@ if run_btn:
     st.session_state.enriched_df = enriched
     st.session_state.ohlcv_df    = df
     st.session_state.ai_comment  = None
+    st.session_state.feedback_sent = False
+    track(
+        "backtest_run",
+        f"{asset} {timeframe} | {exchange_name} | сделок: {result.num_trades} | "
+        f"доходность: {result.total_return_pct:+.1f}%",
+    )
     st.rerun()
 
 # ── Results ───────────────────────────────────────────────────────────────────
@@ -603,6 +626,30 @@ if st.session_state.result is not None:
                             initial_capital=capital,
                         )
                         st.session_state.ai_comment = comment
+                        track("ai_analysis", f"{asset} {timeframe}")
                         st.rerun()
                     except Exception as exc:
                         st.error(f"Ошибка AI-анализа: {exc}")
+
+    # ── Feedback ────────────────────────────────────────────────────────────────
+    st.divider()
+    if st.session_state.get("feedback_sent"):
+        st.success("Спасибо! Твой отзыв получен 🙌")
+    else:
+        with st.container(border=True):
+            st.markdown("#### Был ли инструмент полезен?")
+            with st.form("feedback_form", clear_on_submit=True):
+                rating  = st.radio(
+                    "Оценка", ["👍 Да, полезно", "👎 Нет / непонятно"],
+                    horizontal=True, label_visibility="collapsed",
+                )
+                comment = st.text_input(
+                    "Комментарий",
+                    placeholder="Что понравилось или чего не хватило? (необязательно)",
+                    label_visibility="collapsed",
+                )
+                if st.form_submit_button("Отправить отзыв", use_container_width=True):
+                    ctx = f"{asset} {timeframe}, сделок: {result.num_trades}"
+                    send_feedback("👍" if rating.startswith("👍") else "👎", comment, ctx)
+                    st.session_state.feedback_sent = True
+                    st.rerun()
