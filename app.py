@@ -33,6 +33,138 @@ st.set_page_config(
     layout="wide",
 )
 
+# ─── Design polish ───────────────────────────────────────────────────────────
+# Глобальный CSS, доводящий стандартные виджеты Streamlit до «ощущения качества».
+# Принципы из скилла make-interfaces-feel-better, адаптированные под генерируемый
+# Streamlit'ом DOM: тени вместо границ, концентрические скругления, tabular-nums,
+# scale-on-press, плавные переходы по конкретным свойствам (никогда `all`).
+
+_ACCENT = "#00e5a0"
+
+def inject_css() -> None:
+    st.markdown(
+        f"""
+        <style>
+        /* №8 — сглаживание шрифта для более чёткого текста */
+        .stApp {{
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }}
+
+        /* №10 — заголовки переносятся «сбалансированно», без висячих слов */
+        h1, h2, h3 {{ text-wrap: balance; }}
+
+        /* №3 + №1 — карточки (st.container(border=True)): мягкая тень вместо
+           жёсткой рамки, концентрическое скругление, внутренний отступ */
+        div[data-testid="stVerticalBlockBorderWrapper"] {{
+            border: 1px solid rgba(255, 255, 255, 0.06) !important;
+            border-radius: 16px !important;
+            padding: 20px 22px !important;
+            box-shadow:
+                0 1px 2px rgba(0, 0, 0, 0.30),
+                0 4px 16px rgba(0, 0, 0, 0.22);
+        }}
+
+        /* Метрики → карточки-поверхности (№3 тени, №1 радиус, №9 tabular-nums) */
+        div[data-testid="stMetric"] {{
+            background: #111418;
+            border-radius: 12px;
+            padding: 12px 12px 10px;
+            min-height: 104px;  /* единая высота: подписи в 2 строки не ломают ряд */
+            box-shadow:
+                0 1px 2px rgba(0, 0, 0, 0.30),
+                0 6px 18px rgba(0, 0, 0, 0.18);
+            transition-property: transform, box-shadow;
+            transition-duration: 160ms;
+            transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+        }}
+        div[data-testid="stMetric"]:hover {{
+            transform: translateY(-2px);
+            box-shadow:
+                0 2px 4px rgba(0, 0, 0, 0.32),
+                0 10px 26px rgba(0, 0, 0, 0.26);
+        }}
+        /* Значение: меньше кегль + НЕ обрезаем (7 узких карточек в ряд) */
+        div[data-testid="stMetricValue"] {{
+            font-variant-numeric: tabular-nums;  /* №9 — цифры не прыгают */
+            font-size: 1.75rem !important;
+            line-height: 1.2;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            white-space: nowrap;
+        }}
+        div[data-testid="stMetricDelta"] {{
+            font-variant-numeric: tabular-nums;
+        }}
+        /* Подпись: разрешаем перенос в 2 строки вместо многоточия */
+        div[data-testid="stMetricLabel"],
+        div[data-testid="stMetricLabel"] * {{
+            overflow: visible !important;
+            text-overflow: clip !important;
+            white-space: normal !important;
+        }}
+        div[data-testid="stMetricLabel"] p {{
+            font-size: 0.78rem;
+            line-height: 1.25;
+        }}
+
+        /* №14 + №12 — кнопки: переходы по конкретным свойствам, hover-подъём,
+           тактильный scale(0.96) при нажатии, концентрический радиус */
+        div[data-testid="stButton"] button,
+        div[data-testid="stFormSubmitButton"] button {{
+            border-radius: 10px !important;
+            transition-property: transform, box-shadow, background-color, border-color, color;
+            transition-duration: 150ms;
+            transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+            will-change: transform;  /* №15 — только compositable-свойство */
+        }}
+        div[data-testid="stButton"] button:hover,
+        div[data-testid="stFormSubmitButton"] button:hover {{
+            transform: translateY(-1px);
+        }}
+        div[data-testid="stButton"] button:active,
+        div[data-testid="stFormSubmitButton"] button:active {{
+            transform: scale(0.96);  /* №12 — ровно 0.96, ниже 0.95 выглядит утрированно */
+        }}
+
+        /* Акцентное свечение на главных призывах к действию (CTA):
+           делает кнопки «Загрузить пример / Запустить / AI / Отправить» заметными
+           (фидбэк тестировщиков: онбординг теряется, кнопка AI не выглядит как CTA) */
+        div[data-testid="stButton"] button[kind="primary"],
+        div[data-testid="stFormSubmitButton"] button[kind="secondaryFormSubmit"] {{
+            background: {_ACCENT} !important;
+            color: #06231a !important;
+            border: none !important;
+            font-weight: 600;
+            box-shadow:
+                0 1px 2px rgba(0, 0, 0, 0.25),
+                0 6px 20px rgba(0, 229, 160, 0.28);
+        }}
+        div[data-testid="stButton"] button[kind="primary"]:hover,
+        div[data-testid="stFormSubmitButton"] button[kind="secondaryFormSubmit"]:hover {{
+            transform: translateY(-1px);
+            box-shadow:
+                0 2px 4px rgba(0, 0, 0, 0.28),
+                0 10px 28px rgba(0, 229, 160, 0.40);
+        }}
+        div[data-testid="stButton"] button[kind="primary"]:disabled {{
+            background: rgba(255, 255, 255, 0.08) !important;
+            color: rgba(232, 237, 245, 0.40) !important;
+            box-shadow: none;
+        }}
+
+        /* Sidebar: чуть плотнее по вертикали, чтобы панель не «воровала» внимание
+           (фидбэк: левая колонка конкурирует с контентом) */
+        section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] {{
+            box-shadow: none;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+inject_css()
+
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 ASSETS = [
@@ -321,15 +453,6 @@ with st.sidebar:
 st.title("📈 Конструктор торговых стратегий")
 st.caption("Собери стратегию из блоков, запусти бэктест, получи аналитику.")
 
-st.markdown(
-    """
-    <style>
-    div[data-testid="stButton"] button[kind="secondaryFormSubmit"],
-    .example-btn button { background: #00e5a0 !important; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
 with st.container(border=True):
     st.markdown(
         "### 👋 Первый раз здесь?\n"
