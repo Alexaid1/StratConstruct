@@ -26,3 +26,12 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Agent skills — локальный тулинг, не код проекта
+.agents/
+skills-lock.json
+
+# Личные рабочие заметки и отладочные скриншоты
+Сделано.txt
+От тестировщиков.txt
+не нрав/
