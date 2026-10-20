@@ -64,7 +64,9 @@ def trade_outcome(
     if future.ndim != 2 or len(future) == 0:
         raise ValueError("нет свечей будущего")
 
-    for i, (o, h, l, c) in enumerate(future[:, :4]):
+    # Только родные float/int: результат уходит в JSON (numpy-типы туда не пролезут).
+    entry, stop, take = float(entry), float(stop), float(take)
+    for i, (o, h, l, c) in enumerate(future[:, :4].tolist()):
         if direction == "long":
             stop_hit, take_hit = l <= stop, h >= take
             stop_fill = min(stop, o)
@@ -76,5 +78,5 @@ def trade_outcome(
         if take_hit:
             return TradeResult(take, i, "take", (take - entry) * sign / risk)
 
-    last_close = future[-1, 3]
+    last_close = float(future[-1, 3])
     return TradeResult(last_close, len(future) - 1, "close", (last_close - entry) * sign / risk)

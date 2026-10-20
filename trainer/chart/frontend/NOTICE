@@ -1,0 +1,8 @@
+This component bundles TradingView Lightweight Charts™ v5.2.1
+(lightweight-charts.standalone.production.js), licensed under the Apache License 2.0.
+
+TradingView Lightweight Charts™
+Copyright (c) 2026 TradingView, Inc. https://www.tradingview.com/
+
+The trainer page links to https://www.tradingview.com/ in its footer,
+as required by the library licence (the in-chart attribution logo is disabled).

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Тренажёр трейдера</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;700;900&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <nav class="modes" id="modes" role="tablist" aria-label="Режим игры"></nav>
+
+    <header class="hud" id="hud">
+      <div class="round-badge"><span class="lbl">РАУНД</span><span class="val" id="roundNo">01</span></div>
+      <div class="mystery" id="mystery"></div>
+      <div class="stats" id="stats"></div>
+    </header>
+
+    <div class="stage">
+      <section class="board">
+        <div class="toolbar" id="toolbar"></div>
+        <div class="chart-wrap" id="chartWrap">
+          <div class="chart" id="chart"></div>
+          <div class="legend" id="legend"></div>
+          <div class="fog" id="fog">
+            <div class="mark"><div class="q">?</div><div class="cap" id="fogCap">20 свечей скрыто</div></div>
+          </div>
+          <div class="now-line" id="nowLine"><span>ПРОГНОЗ</span></div>
+          <div class="overlay" id="overlay"></div>
+          <div class="tip" id="tip"></div>
+          <div class="draw-hint" id="drawHint"></div>
+        </div>
+      </section>
+      <aside class="panel" id="panel" aria-live="polite"></aside>
+    </div>
+
+    <canvas id="confetti"></canvas>
+  </div>
+
+  <script src="lightweight-charts.standalone.production.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
