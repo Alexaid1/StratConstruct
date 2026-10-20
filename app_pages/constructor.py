@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import date
-from dotenv import load_dotenv
 
 from data.fetcher import fetch_ohlcv, SUPPORTED_TIMEFRAMES
 from strategy.models import Condition, Rule, IndicatorConfig, Strategy, OPERATORS
@@ -14,25 +13,7 @@ from backtester.engine import run_backtest
 from ai.analyzer import analyze_strategy
 from analytics.telegram import track, send_feedback
 
-load_dotenv()
-
-# На Streamlit Cloud .env не деплоится — креды берём из Secrets и пробрасываем в окружение,
-# чтобы модуль аналитики (он не зависит от Streamlit) их увидел через os.getenv.
-import os as _os
-try:
-    for _k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
-        if _k in st.secrets and not _os.getenv(_k):
-            _os.environ[_k] = str(st.secrets[_k])
-except Exception:
-    pass  # secrets.toml может отсутствовать локально — это нормально
-
-# ─── Page config ─────────────────────────────────────────────────────────────
-
-st.set_page_config(
-    page_title="Конструктор стратегий",
-    page_icon="📈",
-    layout="wide",
-)
+# Загрузка .env, секреты, set_page_config и событие «зашёл» — в роутере app.py.
 
 # ─── Design polish ───────────────────────────────────────────────────────────
 # Глобальный CSS, доводящий стандартные виджеты Streamlit до «ощущения качества».
@@ -284,11 +265,6 @@ def _init_state():
             st.session_state[k] = v
 
 _init_state()
-
-# Событие воронки «зашёл» — ровно один раз за сессию.
-if "tracked_session" not in st.session_state:
-    st.session_state.tracked_session = True
-    track("session_start", "Новый визит")
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
