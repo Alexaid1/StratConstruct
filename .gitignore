@@ -36,3 +36,7 @@ skills-lock.json
 От тестировщиков.txt
 не нрав/
 launch-kit.md
+референсы/
+
+# Журнал попыток тренажёра — у каждого запуска свой
+data/trainer_journal.sqlite*
