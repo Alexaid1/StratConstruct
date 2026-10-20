@@ -1,5 +1,6 @@
 """Тренажёр трейдера: игра на исторических котировках Мосбиржи.
 
-Пакет не зависит от Streamlit — вся логика тестируется pytest'ом,
-а страница app_pages/trainer.py только рисует интерфейс.
+Логика (moex, dataset, rounds, scoring, modes, stats, journal) не зависит
+от Streamlit и покрыта pytest'ом. Интерфейс — ui.py, ui_stats.py и chart/
+(игровой компонент); страница app_pages/trainer.py их склеивает.
 """

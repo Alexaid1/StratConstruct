@@ -13,8 +13,9 @@ from datetime import datetime
 import streamlit as st
 
 from analytics.telegram import track
-from trainer import config
+from trainer import config, ui_stats
 from trainer.chart import game
+from trainer.journal import Journal
 from trainer.modes import MIN_DISTANCE_ATR, MODES, AnswerError, mode_cards
 from trainer.rounds import build_round, generate_round, identity, predict_payload, reveal_payload
 from trainer.ui import footer_html, hero_html, page_css
@@ -23,12 +24,31 @@ GAME_KEY = "trainer_game"
 ss = st.session_state
 
 
+@st.cache_resource
+def journal() -> Journal:
+    """Одна база на процесс — общая для всех сессий, строки разделены по игрокам."""
+    return Journal()
+
+
+def set_player(player_id: str) -> None:
+    """Браузер представился: подтянуть его журнал (и дописать туда то,
+    что успели сыграть до знакомства)."""
+    if not player_id or ss.tr_player == player_id:
+        return
+    ss.tr_player = player_id
+    j = journal()
+    for a in ss.tr_attempts:
+        a["player_id"] = player_id
+        j.add(a)
+    ss.tr_attempts = j.attempts(player_id)
+
+
 # ─── Состояние ────────────────────────────────────────────────────────────────
 
 def init_state() -> None:
     defaults = {
         "tr_mode": "quick",
-        "tr_attempts": [],          # попытки этой сессии (журнал — следующий этап)
+        "tr_attempts": [],          # все попытки игрока (из журнала + новые)
         "tr_last_eid": None,
         "tr_player": None,
         "tr_error": None,
@@ -64,8 +84,7 @@ def handle_event(ev: dict | None) -> bool:
     if not ev or ev.get("eid") == ss.tr_last_eid:
         return False
     ss.tr_last_eid = ev.get("eid")
-    if ev.get("player_id"):
-        ss.tr_player = ev["player_id"]
+    set_player(ev.get("player_id"))
 
     kind, data = ev.get("event"), ev.get("data") or {}
     rd = ss.tr_round
@@ -87,7 +106,7 @@ def handle_event(ev: dict | None) -> bool:
         outcome = mode.evaluate(rd, answer)
         ss.tr_answer, ss.tr_outcome, ss.tr_phase = answer, outcome, "reveal"
         ss.tr_error = None
-        ss.tr_attempts.append({
+        attempt = {
             "id": uuid.uuid4().hex,
             "ts": datetime.now().isoformat(timespec="seconds"),
             "player_id": ss.tr_player,
@@ -95,15 +114,42 @@ def handle_event(ev: dict | None) -> bool:
             **rd.spec.to_dict(),
             "period": identity(rd)["period"],
             "show_identity": ss.tr_round_show_identity,
+            "win": bool(outcome["win"]),
+            "points": int(outcome["points"]),
             "answer": answer,
             "outcome": outcome,
             "drawings": ss.tr_drawings,
-        })
+        }
+        ss.tr_attempts.append(attempt)
+        ss.tr_attempt_id = attempt["id"]
+        if ss.tr_player:
+            journal().add(attempt)
     elif kind == "next" and ss.tr_phase == "reveal":
-        if same_round and ss.tr_attempts:
+        # Линии, дорисованные после раскрытия, тоже остаются в журнале.
+        if same_round and ss.tr_attempts and ss.tr_attempts[-1]["id"] == ss.get("tr_attempt_id"):
             ss.tr_attempts[-1]["drawings"] = ss.tr_drawings
+            if ss.tr_player:
+                journal().update_drawings(ss.tr_attempt_id, ss.tr_drawings)
         new_round()
     return True
+
+
+def import_journal(upload) -> None:
+    """Загрузка CSV — один раз на файл (виджет возвращает его при каждом запуске)."""
+    marker = (upload.name, upload.size)
+    if ss.get("tr_imported") == marker:
+        return
+    ss.tr_imported = marker
+    if not ss.tr_player:
+        st.warning("Подожди секунду, пока игра загрузится, и попробуй ещё раз.")
+        return
+    try:
+        added = journal().import_csv(ss.tr_player, upload.getvalue())
+    except (ValueError, UnicodeDecodeError) as exc:
+        st.error(f"Не получилось прочитать файл: {exc}")
+        return
+    ss.tr_attempts = journal().attempts(ss.tr_player)
+    st.success(f"Готово: добавлено попыток — {added}." if added else "Все попытки из файла уже были в журнале.")
 
 
 def game_state() -> dict:
@@ -171,5 +217,8 @@ st.html(hero_html())
 value = game(game_state(), key=GAME_KEY)
 if handle_event(value):
     st.rerun()
+
+export = journal().export_csv(ss.tr_player) if ss.tr_player and ss.tr_attempts else None
+ui_stats.render(ss.tr_attempts, export, import_journal)
 
 st.html(footer_html())

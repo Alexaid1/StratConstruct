@@ -958,8 +958,15 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.1); }
   .big { font-size: 32px; }
   .panel { grid-template-columns: minmax(0, 1fr); }
   .panel > * { grid-column: 1 / -1; }
+  /* На узком экране в легенде — только закрытие и изменение */
+  .legend span:nth-child(-n+3) { display: none; }
   .choice { grid-template-columns: 1fr; justify-items: center; text-align: center; min-height: 86px; }
   .choice .lbl { align-items: center; }
+}
+
+/* Сенсорные экраны: подсказки по клавишам не нужны */
+@media (hover: none) {
+  .kb { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

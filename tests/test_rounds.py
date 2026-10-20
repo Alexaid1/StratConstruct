@@ -178,6 +178,17 @@ def test_identity_hidden_by_default():
     assert "SBER" not in text and "2019" not in text
 
 
+def test_easy_mode_shows_identity_but_not_the_future():
+    df = synthetic_series()
+    rd = build_round(spec_for(df), df, NO_EVENTS)
+    payload = predict_payload(rd, show_identity=True)
+    assert payload["identity"]["ticker"] == "SBER"
+    assert len(payload["labels"]) == H                         # даты только у видимых свечей
+    assert payload["identity"]["period"].endswith("…")         # конец периода не раскрываем
+    last_future = rd.times[-1].strftime("%d.%m.%Y")
+    assert last_future not in json.dumps(payload, ensure_ascii=False)
+
+
 def test_reveal_payload_has_everything():
     df = synthetic_series()
     payload = reveal_payload(build_round(spec_for(df), df, NO_EVENTS))

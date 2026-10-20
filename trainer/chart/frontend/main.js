@@ -763,7 +763,7 @@
       <button class="cta" id="submit" ${S.choice && !S.waiting ? "" : "disabled"}>
         ${S.waiting ? '<span class="spinner"></span>Раскрываем будущее' : "Зафиксировать прогноз"}
       </button>
-      <p class="hint"><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> выбрать · <kbd>Enter</kbd> ответить</p>`;
+      <p class="hint kb"><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> выбрать · <kbd>Enter</kbd> ответить</p>`;
   }
 
   function renderTradePanel() {
@@ -795,7 +795,7 @@
       <button class="cta" id="submit" ${S.waiting ? "disabled" : ""}>
         ${S.waiting ? '<span class="spinner"></span>Раскрываем будущее' : "Войти в сделку"}
       </button>
-      <p class="hint">Линии стопа и тейка можно тянуть прямо на графике · <kbd>L</kbd>/<kbd>S</kbd> направление</p>`;
+      <p class="hint">Линии стопа и тейка можно тянуть прямо на графике<span class="kb"> · <kbd>L</kbd>/<kbd>S</kbd> направление</span></p>`;
     updateTradeReadout();
   }
 
@@ -879,7 +879,7 @@
       <div class="facts">${facts.map(([k, v]) => `<div class="fact"><span>${k}</span><b>${v}</b></div>`).join("")}</div>
       ${evs ? `<ul class="evlist">${evs}</ul>` : ""}
       <button class="cta" id="next" ${S.waiting ? "disabled" : ""}>${S.waiting ? '<span class="spinner"></span>Готовим график' : "Следующий раунд " + ICON.next}</button>
-      <p class="hint"><kbd>Enter</kbd> или <kbd>N</kbd> — дальше</p>`;
+      <p class="hint kb"><kbd>Enter</kbd> или <kbd>N</kbd> — дальше</p>`;
   }
 
   // Делегирование событий панели
