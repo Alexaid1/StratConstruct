@@ -34,4 +34,6 @@ pages = [
     st.Page("app_pages/constructor.py", title="Конструктор стратегий", icon="📈", default=True),
     st.Page("app_pages/trainer.py", title="Тренажёр трейдера", icon="🎯", url_path="trainer"),
 ]
-st.navigation(pages).run()
+# Меню разделов — в шапке: у тренажёра нет боковой панели, у конструктора
+# в ней остаются только настройки стратегии.
+st.navigation(pages, position="top").run()

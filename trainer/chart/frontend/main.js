@@ -38,6 +38,12 @@
     trend: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 19L20 5"/><circle cx="6" cy="17" r="2" fill="currentColor"/><circle cx="18" cy="7" r="2" fill="currentColor"/></svg>',
     trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
     next: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+    move: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M8 8l4-4 4 4M8 16l4 4 4-4"/></svg>',
+    dash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 12h10"/></svg>',
+    help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.1-2.4 3.6"/><circle cx="12" cy="17.2" r=".7" fill="currentColor"/></svg>',
+    sliders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h9M18 7h2M4 17h3M12 17h8"/><circle cx="15.5" cy="7" r="2.3"/><circle cx="9.5" cy="17" r="2.3"/></svg>',
+    eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg>',
+    close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     flame: '<svg class="flame" viewBox="0 0 24 24"><defs><linearGradient id="fl" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ff4fa8"/><stop offset=".55" stop-color="#ff9a3c"/><stop offset="1" stop-color="#ffd166"/></linearGradient></defs><path fill="url(#fl)" d="M12 2c1 3.2 4.6 5.2 4.6 9.6A4.6 4.6 0 0 1 12 16.2a4.6 4.6 0 0 1-4.6-4.6c0-1.7.7-3 1.6-4 .2 1.6 1 2.6 2 3C10.6 7.6 11 4.6 12 2zm0 22a7 7 0 0 1-7-7c0-1.4.4-2.7 1-3.8.5 3.2 3 5.4 6 5.4s5.5-2.2 6-5.4c.6 1.1 1 2.4 1 3.8a7 7 0 0 1-7 7z"/></svg>',
   };
 
@@ -48,6 +54,7 @@
   };
   const PLAYER_KEY = "stratconstruct.trainer.player";
   const PREFS_KEY = "stratconstruct.trainer.prefs";
+  const HOWTO_KEY = "stratconstruct.trainer.howto_seen";
   function playerId() {
     let id = store.get(PLAYER_KEY, null);
     if (!id) {
@@ -104,6 +111,8 @@
     player: playerId(),
     lastErrorId: null,
     extra: null,               // доп. диапазон автошкалы (зоны, стоп/тейк)
+    set: null,                 // фильтры раундов, пока открыты настройки
+    aux: [],                   // уровни из разбора («показать на графике»)
   };
 
   const $ = (id) => document.getElementById(id);
@@ -112,7 +121,18 @@
     toolbar: $("toolbar"), wrap: $("chartWrap"), chart: $("chart"), legend: $("legend"),
     fog: $("fog"), fogCap: $("fogCap"), now: $("nowLine"), overlay: $("overlay"), tip: $("tip"),
     hint: $("drawHint"), panel: $("panel"), confetti: $("confetti"),
+    board: document.querySelector(".board"), review: $("review"), howto: $("howto"),
+    howBtn: $("howBtn"), setBtn: $("setBtn"), settings: $("settings"),
   };
+  el.howBtn.innerHTML = ICON.help + "Как играть";
+  el.setBtn.innerHTML = ICON.sliders + "Настройки";
+  el.setBtn.setAttribute("aria-label", "Настройки раундов");
+
+  function shake(node) {
+    node.classList.remove("shake");
+    void node.offsetWidth;
+    node.classList.add("shake");
+  }
 
   const fmt = (x, d = 2) => (x == null || !isFinite(x) ? "—" : Number(x).toFixed(d));
   const sgn = (x, d = 2) => (x == null || !isFinite(x) ? "—" : (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(d));
@@ -627,7 +647,7 @@
     const m = (S.st.modes || []).find((x) => x.id === b.dataset.mode);
     if (!m) return;
     if (!m.available) {
-      b.classList.remove("shake"); void b.offsetWidth; b.classList.add("shake");
+      shake(b);
       return;
     }
     if (m.id === S.mode || S.waiting || S.revealing) return;
@@ -878,6 +898,7 @@
         <div class="per">${esc(ident.timeframe_label || "")} · ${esc(ident.period || "")}</div></div>
       <div class="facts">${facts.map(([k, v]) => `<div class="fact"><span>${k}</span><b>${v}</b></div>`).join("")}</div>
       ${evs ? `<ul class="evlist">${evs}</ul>` : ""}
+      ${S.st.review ? `<button class="chip link to-review" id="toReview">${ICON.down}Разбор: почему так вышло</button>` : ""}
       <button class="cta" id="next" ${S.waiting ? "disabled" : ""}>${S.waiting ? '<span class="spinner"></span>Готовим график' : "Следующий раунд " + ICON.next}</button>
       <p class="hint kb"><kbd>Enter</kbd> или <kbd>N</kbd> — дальше</p>`;
   }
@@ -906,6 +927,7 @@
       return;
     }
     if (b.id === "submit") { submit(); return; }
+    if (b.id === "toReview") { el.review.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" }); return; }
     if (b.id === "next") { nextRound(); }
   });
   el.panel.addEventListener("input", (e) => {
@@ -967,11 +989,254 @@
     S.waiting = true;
     emit("next", { drawings: S.drawings });
     renderPanel(false);
+    const again = $("next2");
+    if (again) { again.disabled = true; again.innerHTML = '<span class="spinner"></span>Готовим график'; }
   }
+
+  // ─── Настройки раундов ─────────────────────────────────────────────────────
+  function syncSettings() {
+    const st = S.st && S.st.settings;
+    if (!st) return;
+    S.set = {
+      tickers: st.tickers.filter((t) => t.on).map((t) => t.id),
+      timeframes: st.timeframes.filter((t) => t.on).map((t) => t.id),
+      show_identity: !!st.show_identity,
+    };
+  }
+  function renderSettings() {
+    const st = S.st.settings, set = S.set;
+    const pick = (attr, id, main, sub) => {
+      const on = (attr === "tk" ? set.tickers : set.timeframes).includes(id);
+      return `<button class="pick${on ? " on" : ""}" data-${attr}="${esc(id)}" aria-pressed="${on}"><b>${esc(main)}</b>${sub ? `<span>${esc(sub)}</span>` : ""}</button>`;
+    };
+    el.settings.innerHTML = `
+      <div class="pop-head"><b>Настройки раундов</b><span>применятся со следующего раунда</span></div>
+      <div class="pop-sec"><div class="k">Бумаги</div>
+        <div class="picks">${st.tickers.map((t) => pick("tk", t.id, t.id, t.name)).join("")}</div></div>
+      <div class="pop-sec"><div class="k">Таймфрейм</div>
+        <div class="picks">${st.timeframes.map((t) => pick("tf", t.id, t.label, "")).join("")}</div></div>
+      <div class="sw-row">
+        <div><b>Тикер и даты сразу</b><small>Лёгкий режим: видно бумагу и период — память начнёт подсказывать</small></div>
+        <button class="switch" role="switch" aria-checked="${set.show_identity}" aria-label="Показывать тикер и даты сразу" data-sw="identity"><i></i></button>
+      </div>`;
+  }
+  function toggleSettings(open) {
+    const willOpen = open == null ? el.settings.hidden : open;
+    if (willOpen === !el.settings.hidden) return;
+    if (willOpen) { syncSettings(); renderSettings(); }
+    el.settings.hidden = !willOpen;
+    el.setBtn.setAttribute("aria-expanded", String(willOpen));
+    el.setBtn.classList.toggle("on", willOpen);
+  }
+  el.setBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleSettings(); });
+  el.settings.addEventListener("click", (e) => {
+    // Панель перерисовывается по клику — без stopPropagation клик «снаружи» закрыл бы её.
+    e.stopPropagation();
+    const b = e.target.closest("button");
+    if (!b || !S.set) return;
+    const flip = (list, id) => (list.includes(id) ? list.filter((x) => x !== id) : list.concat(id));
+    if (b.dataset.tk || b.dataset.tf) {
+      const key = b.dataset.tk ? "tickers" : "timeframes";
+      const next = flip(S.set[key], b.dataset.tk || b.dataset.tf);
+      if (!next.length) { shake(b); return; }          // хотя бы одна бумага и один таймфрейм
+      S.set[key] = next;
+    } else if (b.dataset.sw === "identity") {
+      S.set.show_identity = !S.set.show_identity;
+    } else {
+      return;
+    }
+    renderSettings();
+    emit("settings", S.set);
+  });
+  document.addEventListener("click", (e) => {
+    if (!el.settings.hidden && !e.target.closest(".set-wrap")) toggleSettings(false);
+  });
+
+  // ─── «Как играть» ──────────────────────────────────────────────────────────
+  function howtoHtml() {
+    const cfg = S.st.config, p = S.st.payload;
+    const [m1, m2] = cfg.ma, [mf, ms, msig] = cfg.macd, [bn, bk] = cfg.bb;
+    const levels = [50, 60, 70, 80, 90, 100];
+    const stakeRow = (k, cls) => levels.map((v) => `<td class="${cls}">${sgn(stakes(v)[k], 0)}</td>`).join("");
+    const ind = [
+      [C.ma1, `MA ${m1} и MA ${m2}`, `Скользящие средние — средняя цена закрытия за ${m1} и ${m2} свечей.`,
+        "Цена выше обеих и они растут — тренд вверх, ниже и падают — вниз. Разворот средние покажут с опозданием."],
+      ["#bdb4ec", "Боллинджер", `Коридор: средняя за ${bn} свечей ± ${bk} стандартных отклонения.`,
+        "У верхней границы цена «дорогая», у нижней — «дешёвая». Сжатый коридор — затишье перед сильным движением."],
+      [C.up, "Объём", "Сколько бумаг купили и продали за свечу.",
+        "Движение на большом объёме надёжнее. Рост на падающем объёме слабый и легко ломается."],
+      [C.rsi, `RSI ${cfg.rsi}`, "Сила движений вверх против движений вниз, шкала от 0 до 100.",
+        "Выше 70 — перекупленность, ниже 30 — перепроданность: возможен откат. Выше 50 — перевес покупателей."],
+      [C.macd, `MACD ${mf}/${ms}/${msig}`, "Разница быстрой и медленной средних и её сигнальная линия.",
+        "MACD выше сигнальной — импульс вверх, пересечение — смена импульса. Столбики растут — импульс крепнет."],
+      [C.event.cbr_meeting, "События", "Заседания ЦБ, отчётность, дивидендные отсечки — метки на графике.",
+        "Дата видна заранее, исход — нет. Перед событием цена может резко дёрнуться: повод снизить уверенность."],
+    ];
+    const sec = (n, title, body) =>
+      `<section class="h-sec"><div class="h-num">${n}</div><div class="h-body"><h3>${title}</h3>${body}</div></section>`;
+    return `
+      <div class="howto-card" role="document">
+        <button class="x" data-howto="close" aria-label="Закрыть">${ICON.close}</button>
+        <header class="h-head">
+          <div class="eyebrow">Правила · 2 минуты</div>
+          <h2 id="howTitle">Как <span>играть</span></h2>
+          <p>Тренажёр учит читать график, а не вспоминать историю: тикер и даты скрыты до ответа.
+            Это настоящие котировки Мосбиржи, а не случайные линии.</p>
+        </header>
+        ${sec("01", "Смотри на график", `<p>Перед тобой ${p.history} свечей. Цены пересчитаны так, что первое закрытие = 100, — по ним бумагу не узнать.
+          Индикаторы включаются кнопками над графиком, уровни и тренды можно рисовать прямо на нём.</p>`)}
+        ${sec("02", "Сделай прогноз", `<div class="h-modes">
+          <div class="h-mode"><b>01 · Быстрый</b><p>Куда цена уйдёт за ${p.future_slots} свечей: вверх, вниз или останется в коридоре — это «боковик».
+            Коридор шириной ±${cfg.sideways_mult} ATR подсвечен на графике.</p></div>
+          <div class="h-mode"><b>02 · Сделка</b><p>Выбери лонг или шорт и поставь стоп и тейк — их можно тянуть прямо на графике.
+            Результат считается в R: сколько своих рисков ты заработал или потерял.</p></div>
+        </div>`)}
+        ${sec("03", "Уверенность — это ставка", `<p>Чем увереннее прогноз, тем больше очков за попадание — и тем дороже промах.
+          При 50% ты ничем не рискуешь. Выгоднее всего ставить ровно ту уверенность, которую чувствуешь.</p>
+          <table class="h-stakes"><thead><tr><th>уверенность</th>${levels.map((v) => `<th>${v}%</th>`).join("")}</tr></thead>
+          <tbody><tr><th>угадал</th>${stakeRow("win", "pos")}</tr><tr><th>промах</th>${stakeRow("lose", "neg")}</tr></tbody></table>`)}
+        ${sec("04", "Как читать индикаторы", `<div class="h-ind">${ind.map(([col, name, what, how]) => `
+          <div class="h-card" style="--c:${col}"><b><i></i>${name}</b><p>${what}</p><p class="how">${how}</p></div>`).join("")}</div>`)}
+        ${sec("05", "Разбери раунд", `<p>После ответа будущее раскроется свеча за свечой, а под графиком появится разбор:
+          что показывал каждый индикатор, какие сигналы сработали и что происходило с ценой.</p>`)}
+        <div class="h-gloss">
+          <span><b>ATR</b> — средний размах свечи за ${cfg.atr} свечей, мерило обычного шума</span>
+          <span><b>R</b> — риск сделки: расстояние от входа до стопа</span>
+        </div>
+        <button class="cta" data-howto="close">Понятно, играем</button>
+      </div>`;
+  }
+  // Фокус переносим только при работе с клавиатуры — от мыши рамка фокуса лишняя.
+  function openHowto(fromKeyboard) {
+    if (!S.st) return;
+    toggleSettings(false);
+    el.howto.innerHTML = howtoHtml();
+    el.howto.hidden = false;
+    const x = el.howto.querySelector(".x");
+    if (x && fromKeyboard) x.focus({ preventScroll: true });
+  }
+  function closeHowto(fromKeyboard) {
+    if (el.howto.hidden) return;
+    el.howto.hidden = true;
+    if (fromKeyboard) el.howBtn.focus({ preventScroll: true });
+  }
+  // detail === 0 — «клик» с клавиатуры (Enter/пробел на кнопке).
+  el.howBtn.addEventListener("click", (e) => openHowto(e.detail === 0));
+  el.howto.addEventListener("click", (e) => {
+    if (e.target === el.howto || e.target.closest("[data-howto=close]")) closeHowto(e.detail === 0);
+  });
+
+  // ─── Разбор раунда ─────────────────────────────────────────────────────────
+  const SIG_COLOR = { trend: C.ma1, rsi: C.rsi, macd: C.macd, bb: "#bdb4ec", vol: C.up, levels: C.trend };
+  const RES_TEXT = { ok: "✓ сработал", miss: "✕ не сработал", idle: "сигнала не было" };
+
+  function sigCard(s) {
+    const cls = s.worked === true ? "ok" : s.worked === false ? "miss" : "idle";
+    const v = s.vote || "none";
+    const icon = { up: ICON.up, down: ICON.down, move: ICON.move, none: ICON.dash }[v];
+    return `
+      <article class="sig ${cls}">
+        <header><span class="dot" style="background:${SIG_COLOR[s.id] || C.text};color:${SIG_COLOR[s.id] || C.text}"></span>
+          <b>${esc(s.title)}</b><span class="vote v-${v}">${icon}${esc(s.vote_label)}</span></header>
+        <div class="val">${esc(s.value)}</div>
+        <p class="read">${esc(s.reading)}</p>
+        <details><summary>Как читать</summary><p>${esc(s.rule)}</p></details>
+        <footer><span class="res">${RES_TEXT[cls]}</span>
+          <button class="chip mini" data-show="${esc(s.id)}">${ICON.eye}на графике</button></footer>
+      </article>`;
+  }
+
+  function renderReview() {
+    const rv = S.st && S.st.review;
+    if (!rv || !S.revealDone) {
+      el.review.hidden = true;
+      el.review.innerHTML = "";
+      return;
+    }
+    const c = rv.consensus;
+    const parts = [["up", "за рост", c.up], ["down", "за падение", c.down], ["move", "за сильное движение", c.move], ["none", "без сигнала", c.neutral]]
+      .filter((x) => x[2] > 0);
+    const badge = c.matched === true ? '<span class="badge ok">совпало с итогом</span>'
+      : c.matched === false ? '<span class="badge miss">цена пошла иначе</span>' : "";
+    const tl = rv.timeline.map((it) => `
+      <li class="t-${it.tone}${it.final ? " final" : ""}"><span class="b">+${it.bar}</span><span class="t">${esc(it.text)}</span></li>`).join("");
+    el.review.innerHTML = `
+      <header class="rv-head">
+        <div class="rv-title">
+          <div class="eyebrow">Разбор раунда</div>
+          <h2>${esc(rv.title)}</h2>
+          <p class="why">${esc(rv.why)}</p>
+        </div>
+        <div class="rv-outcome ${rv.actual}"><span class="ico">${ICON[rv.actual]}</span>
+          <span><b>${esc(rv.actual_label)}</b><small>${sgn(rv.change_pct)}% за ${S.F} свечей</small></span></div>
+      </header>
+      <div class="rv-grid">
+        <div class="rv-col">
+          <div class="rv-sub"><span class="n">01</span>Что показывал график в момент прогноза</div>
+          <div class="cons">
+            <div class="cons-bar">${parts.map(([k, , n]) => `<i class="${k}" style="flex:${n}"></i>`).join("")}</div>
+            <div class="cons-legend">${parts.map(([k, label, n]) => `<span><i class="${k}"></i>${label}: ${n}</span>`).join("")}</div>
+            <div class="cons-text">${esc(c.text)}${badge}</div>
+          </div>
+          <div class="sigs">${rv.signals.map(sigCard).join("")}</div>
+        </div>
+        <div class="rv-col">
+          <div class="rv-sub"><span class="n">02</span>Что случилось за ${S.F} свечей</div>
+          <ol class="tl">${tl}</ol>
+          <div class="rv-sub"><span class="n">03</span>Вывод</div>
+          <ul class="lessons">${rv.lessons.map((l) => `<li>${esc(l)}</li>`).join("")}</ul>
+          <button class="cta" id="next2">Следующий раунд ${ICON.next}</button>
+        </div>
+      </div>
+      <p class="rv-note">Индикаторы описывают прошлое и дают перевес вероятностей, а не гарантию.
+        Настоящих причин движения не знает никто — разбор опирается только на график и календарь событий.</p>`;
+    el.review.hidden = false;
+  }
+
+  function clearAux() {
+    S.aux.forEach((l) => { try { candles.removePriceLine(l); } catch (e) { /* нет линии */ } });
+    S.aux = [];
+  }
+  function showOnChart(id) {
+    const rv = S.st && S.st.review;
+    const sig = rv && rv.signals.find((s) => s.id === id);
+    if (!sig) return;
+    if (sig.lines) {
+      clearAux();
+      const [hi, lo] = sig.lines;
+      const opts = { color: C.trend, lineWidth: 1, lineStyle: LC.LineStyle.LargeDashed, axisLabelVisible: true };
+      S.aux.push(candles.createPriceLine(Object.assign({ price: hi, title: "макс окна" }, opts)));
+      S.aux.push(candles.createPriceLine(Object.assign({ price: lo, title: "мин окна" }, opts)));
+    } else {
+      const set = new Set(S.prefs.ind);
+      sig.show.forEach((k) => set.add(k));
+      S.prefs.ind = [...set];
+      store.set(PREFS_KEY, S.prefs);
+      buildIndicators();
+      renderToolbar();
+    }
+    el.board.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "center" });
+    el.board.classList.remove("pulse");
+    void el.board.offsetWidth;
+    el.board.classList.add("pulse");
+  }
+  el.review.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.show) showOnChart(b.dataset.show);
+    else if (b.id === "next2") {
+      el.app.scrollIntoView({ block: "start" });
+      nextRound();
+    }
+  });
 
   // ─── Клавиатура ────────────────────────────────────────────────────────────
   document.addEventListener("keydown", (e) => {
+    if (!el.howto.hidden) { if (e.key === "Escape") closeHowto(true); return; }
+    if (e.key === "Escape" && !el.settings.hidden) { toggleSettings(false); return; }
     if (e.target && (e.target.tagName === "INPUT" && e.target.type === "number")) return;
+    // Enter на кнопке разбора или настроек — это её собственный клик, а не «дальше».
+    if (e.target && e.target.closest && e.target.closest("#review, #settings")) return;
     if (e.key === "Escape") { if (S.tool) setTool(null); return; }
     if (S.revealDone) {
       if (e.key === "Enter" || e.code === "KeyN") { e.preventDefault(); nextRound(); }
@@ -1017,7 +1282,9 @@
 
     clearDrawings();
     removeTradeLines();
+    clearAux();
     markers.setMarkers([]);
+    renderReview();
 
     const final = st.phase === "reveal";
     S.shown = final ? S.H + S.F : S.H;
@@ -1116,6 +1383,7 @@
     markers.setMarkers(m);
 
     renderPanel(true);
+    renderReview();
     renderHUD();
     requestLayout();
     if (celebrate && S.outcome && S.outcome.win && !reduceMotion()) confetti();
@@ -1199,6 +1467,11 @@
       renderPanel(false);
     }
     renderHUD();
+    // Первый заход — сразу правила (дальше они по кнопке «Как играть»).
+    if (first && !store.get(HOWTO_KEY, false)) {
+      store.set(HOWTO_KEY, true);
+      openHowto();
+    }
     fitHeight();
   }
 

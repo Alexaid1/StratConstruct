@@ -162,16 +162,28 @@ def page_css() -> str:
   font-family: var(--tr-ui);
   -webkit-font-smoothing: antialiased;
 }}
-[data-testid="stHeader"] {{ background: transparent; }}
-.block-container {{ padding-top: 2.2rem; max-width: 1480px; }}
-section[data-testid="stSidebar"] > div {{
-  background: linear-gradient(180deg, #130f3a 0%, #0b0920 100%);
+/* ── Шапка с меню разделов (st.navigation position="top") ── */
+[data-testid="stHeader"] {{
+  background: rgba(11, 9, 32, 0.72);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 1px 0 var(--tr-line);
 }}
-section[data-testid="stSidebar"] {{ box-shadow: 1px 0 0 var(--tr-line); }}
-section[data-testid="stSidebar"] h3 {{
-  font-family: var(--tr-display); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
+a[data-testid="stTopNavLink"] {{
+  border-radius: 999px;
+  padding-left: 14px; padding-right: 14px;
+  transition: background-color 150ms var(--tr-ease), box-shadow 150ms var(--tr-ease);
 }}
-span[data-baseweb="tag"] {{ background: rgba(139, 108, 255, 0.28) !important; }}
+a[data-testid="stTopNavLink"] [data-testid="stMarkdownContainer"] p {{
+  font-family: var(--tr-ui); font-weight: 500; color: var(--tr-text-2);
+}}
+a[data-testid="stTopNavLink"]:hover {{ background: rgba(255, 255, 255, 0.06); }}
+a[data-testid="stTopNavLink"][aria-current="page"] {{
+  background: rgba(255, 209, 102, 0.10);
+  box-shadow: inset 0 0 0 1px rgba(255, 209, 102, 0.40);
+}}
+a[data-testid="stTopNavLink"][aria-current="page"] [data-testid="stMarkdownContainer"] p {{ color: var(--tr-gold); font-weight: 600; }}
+.block-container {{ padding-top: 4.6rem; max-width: 1480px; }}
 h1, h2, h3 {{ text-wrap: balance; }}
 
 /* ── Заставка ── */
@@ -280,6 +292,7 @@ def hero_html() -> str:
       <span class="step"><b>01</b>Смотри</span>
       <span class="step"><b>02</b>Прогнозируй</span>
       <span class="step"><b>03</b>Раскрой будущее</span>
+      <span class="step"><b>04</b>Разбери</span>
     </div>
   </div>
   <div class="side">SBER · LKOH · YDEX · MGNT</div>

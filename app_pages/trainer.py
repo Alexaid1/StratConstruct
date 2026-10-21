@@ -7,13 +7,14 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 
 import streamlit as st
 
 from analytics.telegram import track
-from trainer import config, ui_stats
+from trainer import analysis, config, ui_stats
 from trainer.chart import game
 from trainer.journal import Journal
 from trainer.modes import MIN_DISTANCE_ATR, MODES, AnswerError, mode_cards
@@ -22,6 +23,7 @@ from trainer.ui import footer_html, hero_html, page_css
 
 GAME_KEY = "trainer_game"
 ss = st.session_state
+log = logging.getLogger(__name__)
 
 
 @st.cache_resource
@@ -56,6 +58,7 @@ def init_state() -> None:
         "tr_tickers": list(config.TICKERS),
         "tr_timeframes": list(config.TIMEFRAMES),
         "tr_show_identity": False,
+        "tr_review": None,
     }
     for k, v in defaults.items():
         ss.setdefault(k, v)
@@ -64,17 +67,50 @@ def init_state() -> None:
 
 
 def new_round() -> None:
-    spec = generate_round(tickers=ss.tr_tickers or None, timeframes=ss.tr_timeframes or None)
+    try:
+        spec = generate_round(tickers=ss.tr_tickers or None, timeframes=ss.tr_timeframes or None)
+    except ValueError:
+        # Под выбранные фильтры нет данных — играем на всех бумагах.
+        spec = generate_round()
     ss.tr_round = build_round(spec)
     ss.tr_phase = "predict"
     ss.tr_answer = None
     ss.tr_outcome = None
+    ss.tr_review = None
     ss.tr_drawings = []
     ss.tr_round_show_identity = ss.tr_show_identity
 
 
 def mode_attempts(mode: str) -> list[dict]:
     return [a for a in ss.tr_attempts if a["mode"] == mode]
+
+
+def apply_settings(data: dict) -> None:
+    """Фильтры раундов из настроек в игре. Применяются со следующего раунда."""
+    tickers = [t for t in data.get("tickers") or [] if t in config.TICKERS]
+    timeframes = [tf for tf in data.get("timeframes") or [] if tf in config.TIMEFRAMES]
+    ss.tr_tickers = tickers or list(config.TICKERS)
+    ss.tr_timeframes = timeframes or list(config.TIMEFRAMES)
+    ss.tr_show_identity = bool(data.get("show_identity"))
+
+
+def settings_state() -> dict:
+    return {
+        "tickers": [{"id": t, "name": config.TICKER_NAMES.get(t, t), "on": t in ss.tr_tickers}
+                    for t in config.TICKERS],
+        "timeframes": [{"id": tf, "label": config.TIMEFRAME_LABELS[tf].capitalize(), "on": tf in ss.tr_timeframes}
+                       for tf in config.TIMEFRAMES],
+        "show_identity": bool(ss.tr_show_identity),
+    }
+
+
+def round_review(rd, mode: str, answer: dict, outcome: dict) -> dict | None:
+    try:
+        return analysis.review(rd, mode, answer, outcome)
+    except Exception:
+        # Разбор — подсказка, а не часть игры: его сбой не должен ломать раунд.
+        log.exception("разбор раунда не собрался")
+        return None
 
 
 # ─── События из игры ──────────────────────────────────────────────────────────
@@ -92,7 +128,9 @@ def handle_event(ev: dict | None) -> bool:
     if same_round and isinstance(data.get("drawings"), list):
         ss.tr_drawings = data["drawings"][:200]
 
-    if kind == "mode" and data.get("mode") in MODES:
+    if kind == "settings":
+        apply_settings(data)
+    elif kind == "mode" and data.get("mode") in MODES:
         ss.tr_mode = data["mode"]
         if ss.tr_phase == "reveal":
             new_round()
@@ -105,6 +143,7 @@ def handle_event(ev: dict | None) -> bool:
             return True
         outcome = mode.evaluate(rd, answer)
         ss.tr_answer, ss.tr_outcome, ss.tr_phase = answer, outcome, "reveal"
+        ss.tr_review = round_review(rd, ss.tr_mode, answer, outcome)
         ss.tr_error = None
         attempt = {
             "id": uuid.uuid4().hex,
@@ -167,6 +206,9 @@ def game_state() -> dict:
         "outcome": ss.tr_outcome,
         "summary": summary,
         "summary_prev": MODES[mode].summary(done[:-1]) if reveal else summary,
+        # Разбор знает будущее — только после ответа.
+        "review": ss.tr_review if reveal else None,
+        "settings": settings_state(),
         "drawings": ss.tr_drawings,
         "error": ss.tr_error,
         "error_id": ss.tr_error_id,
@@ -177,6 +219,10 @@ def game_state() -> dict:
             "take_atr": config.DEFAULT_TAKE_ATR,
             "min_dist_atr": MIN_DISTANCE_ATR * 1.02,  # запас на округление цен в браузере
             "ma": list(config.MA_PERIODS),
+            "rsi": config.RSI_PERIOD,
+            "macd": list(config.MACD_PARAMS),
+            "bb": list(config.BB_PARAMS),
+            "atr": config.ATR_PERIOD,
         },
     }
 
@@ -193,22 +239,8 @@ if "tr_tracked" not in ss:
 # получила новое состояние (без лишнего круга перерисовки).
 handle_event(ss.get(GAME_KEY))
 
-with st.sidebar:
-    st.markdown("### 🎯 Тренажёр")
-    st.multiselect(
-        "Тикеры", config.TICKERS, key="tr_tickers",
-        format_func=lambda t: f"{t} · {config.TICKER_NAMES.get(t, t)}",
-        help="Из каких бумаг брать раунды. Пусто — все.",
-    )
-    st.pills(
-        "Таймфреймы", list(config.TIMEFRAMES), key="tr_timeframes", selection_mode="multi",
-        format_func=lambda tf: config.TIMEFRAME_LABELS[tf].capitalize(),
-    )
-    st.toggle(
-        "Показывать тикер и даты сразу", key="tr_show_identity",
-        help="Лёгкий режим: видно, что за бумага и какой период. Память начнёт подсказывать.",
-    )
-    st.caption("Фильтры применяются со следующего раунда.")
+# Боковой панели у тренажёра нет: меню разделов — в шапке (см. app.py),
+# фильтры раундов — в настройках внутри игры.
 
 # Стили — через st.markdown: st.html выбрасывает <style> с картинкой в data URI.
 st.markdown(page_css(), unsafe_allow_html=True)

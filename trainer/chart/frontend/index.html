@@ -11,7 +11,16 @@
 </head>
 <body>
   <div class="app" id="app">
-    <nav class="modes" id="modes" role="tablist" aria-label="Режим игры"></nav>
+    <div class="topbar">
+      <nav class="modes" id="modes" role="tablist" aria-label="Режим игры"></nav>
+      <div class="top-actions">
+        <button class="chip ghost" id="howBtn" aria-haspopup="dialog"></button>
+        <div class="set-wrap">
+          <button class="chip ghost" id="setBtn" aria-expanded="false" aria-controls="settings"></button>
+          <div class="popover" id="settings" role="dialog" aria-label="Настройки раундов" hidden></div>
+        </div>
+      </div>
+    </div>
 
     <header class="hud" id="hud">
       <div class="round-badge"><span class="lbl">РАУНД</span><span class="val" id="roundNo">01</span></div>
@@ -36,6 +45,10 @@
       </section>
       <aside class="panel" id="panel" aria-live="polite"></aside>
     </div>
+
+    <section class="review" id="review" aria-label="Разбор раунда" hidden></section>
+
+    <div class="howto" id="howto" role="dialog" aria-modal="true" aria-labelledby="howTitle" hidden></div>
 
     <canvas id="confetti"></canvas>
   </div>
