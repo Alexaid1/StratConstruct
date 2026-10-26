@@ -27,6 +27,7 @@ BIG_BAR_ATR = 1.5      # «сильная свеча»: изменение за 
 SHOCK_BAR_ATR = 2.5    # свеча-рывок: больше 2.5 ATR за раз…
 SHOCK_SHARE = 0.5      # …и не меньше половины всего движения за раунд
 DRIVER_EVENTS = {"cbr_meeting", "earnings"}  # отсечка не в счёт: её гэп убран из графика
+EVENT_SHARE = 0.4      # событие — главная версия, только если на реакцию пришлось ≥40% движения
 
 
 # ─── Мелочи ───────────────────────────────────────────────────────────────────
@@ -97,8 +98,16 @@ def trend_signal(close: np.ndarray, ma_fast: np.ndarray, ma_slow: np.ndarray, at
         vote, reading = UP, f"Цена выше MA {f} и MA {s}, а MA {f} растёт — восходящий тренд."
     elif c < m1 < m2 and slope < 0:
         vote, reading = DOWN, f"Цена ниже MA {f} и MA {s}, а MA {f} снижается — нисходящий тренд."
+    elif c > max(m1, m2):
+        why = f"MA {f} ниже MA {s}" if m1 < m2 else f"MA {f} не растёт"
+        vote, reading = None, (f"Цена выше обеих средних, но тренда по ним ещё нет: {why}. "
+                               "Это может быть начало разворота вверх, а может быть просто отскок.")
+    elif c < min(m1, m2):
+        why = f"MA {f} выше MA {s}" if m1 > m2 else f"MA {f} не снижается"
+        vote, reading = None, (f"Цена ниже обеих средних, но тренда по ним ещё нет: {why}. "
+                               "Это может быть начало разворота вниз, а может быть просто откат.")
     else:
-        vote, reading = None, "Цена и средние переплетены — явного тренда нет."
+        vote, reading = None, f"Цена между MA {f} и MA {s} — явного тренда нет."
     cross = _recent_cross(ma_fast - ma_slow, 10)
     if cross:
         ago, way = cross
@@ -109,33 +118,45 @@ def trend_signal(close: np.ndarray, ma_fast: np.ndarray, ma_slow: np.ndarray, at
         f"{_pct((c / m1 - 1) * 100)} к MA {f} · {_pct((c / m2 - 1) * 100)} к MA {s}",
         reading,
         "Цена выше обеих средних и они растут — тренд вверх; ниже и падают — вниз. "
-        "Тренды чаще продолжаются, чем ломаются, но средние запаздывают: "
-        "на развороте они ещё какое-то время показывают старый тренд.",
+        "Средние запаздывают: на развороте они ещё какое-то время показывают старый тренд.",
         vote, ["ma1", "ma2"],
     )
 
 
+# RSI: зона без сигнала шире, чем «около 50», — иначе 45 и 43 дают разные
+# выводы на ровном месте. У самых границ 30/70 честно пишем, что край рядом.
+RSI_HIGH, RSI_LOW = 70, 30
+RSI_BULL, RSI_BEAR = 60, 40
+RSI_NEAR = 5  # «рукой подать» до перекупленности / перепроданности
+
+
 def rsi_signal(rsi: np.ndarray) -> dict | None:
-    r = rsi[-1]
+    r = float(rsi[-1])
     if not _finite(r):
         return None
-    extreme = r >= 70 or r <= 30
-    if r >= 70:
+    extreme = r >= RSI_HIGH or r <= RSI_LOW
+    if r >= RSI_HIGH:
         vote, reading = DOWN, "Выше 70 — перекупленность: цена быстро выросла, за этим часто следует откат."
-    elif r <= 30:
+    elif r <= RSI_LOW:
         vote, reading = UP, "Ниже 30 — перепроданность: после резкого падения часто бывает отскок."
-    elif r >= 55:
-        vote, reading = UP, "Выше 50 — у покупателей перевес, но до перегрева далеко."
-    elif r <= 45:
-        vote, reading = DOWN, "Ниже 50 — у продавцов перевес, но до перепроданности далеко."
+    elif r >= RSI_HIGH - RSI_NEAR:
+        vote, reading = UP, ("У покупателей перевес, но до перекупленности (70) рукой подать — "
+                             "запас роста по RSI небольшой.")
+    elif r <= RSI_LOW + RSI_NEAR:
+        vote, reading = DOWN, ("У продавцов перевес, но до перепроданности (30) рукой подать — "
+                               "запас падения по RSI небольшой.")
+    elif r >= RSI_BULL:
+        vote, reading = UP, "Выше 60 — у покупателей заметный перевес, до перекупленности (70) ещё есть запас."
+    elif r <= RSI_BEAR:
+        vote, reading = DOWN, "Ниже 40 — у продавцов заметный перевес, до перепроданности (30) ещё есть запас."
     else:
-        vote, reading = None, "Около 50 — силы покупателей и продавцов равны."
+        vote, reading = None, "Между 40 и 60 — явного перевеса ни у покупателей, ни у продавцов нет."
     return _signal(
         "rsi", f"RSI · {config.RSI_PERIOD}", f"RSI {r:.0f}", reading,
-        "Выше 70 — перекупленность, ниже 30 — перепроданность: возможен разворот. "
-        "Между ними смотрят, по какую сторону от 50: выше — перевес покупателей, ниже — продавцов. "
+        "Выше 70 — перекупленность, ниже 30 — перепроданность: возможен откат. "
+        "Выше 60 — перевес покупателей, ниже 40 — продавцов, между 40 и 60 сигнала нет. "
         "В сильном тренде RSI может долго держаться у края — это ещё не сигнал к развороту.",
-        vote, ["rsi"], extreme=bool(extreme), level=round(float(r), 1),
+        vote, ["rsi"], extreme=bool(extreme), level=round(r, 1),
     )
 
 
@@ -162,6 +183,12 @@ def macd_signal(macd: np.ndarray, signal: np.ndarray, hist: np.ndarray, atr: flo
     )
 
 
+# Боллинджер: доля высоты коридора. У самой границы — сигнал на возврат,
+# в верхней/нижней трети — только описание положения, без голоса.
+BB_EDGE_HIGH, BB_EDGE_LOW = 0.9, 0.1
+BB_PART_HIGH, BB_PART_LOW = 0.65, 0.35
+
+
 def bollinger_signal(close: np.ndarray, upper: np.ndarray, mid: np.ndarray, lower: np.ndarray) -> dict | None:
     c, up, md, lo = close[-1], upper[-1], mid[-1], lower[-1]
     if not _finite(up, md, lo) or up <= lo:
@@ -171,29 +198,37 @@ def bollinger_signal(close: np.ndarray, upper: np.ndarray, mid: np.ndarray, lowe
     widths = widths[np.isfinite(widths)]
     width = (up - lo) / md
     squeeze = len(widths) >= 20 and width <= np.percentile(widths, 20)
-    if pos > 0.9:
+    extreme = pos > BB_EDGE_HIGH or pos < BB_EDGE_LOW
+    if pos > BB_EDGE_HIGH:
         vote = DOWN
         reading = ("Цена вышла за верхнюю границу коридора" if pos > 1 else "Цена у верхней границы коридора")
         reading += " — перерастянута вверх, её часто тянет обратно к середине."
-    elif pos < 0.1:
+    elif pos < BB_EDGE_LOW:
         vote = UP
         reading = ("Цена вышла за нижнюю границу коридора" if pos < 0 else "Цена у нижней границы коридора")
         reading += " — перерастянута вниз, её часто тянет обратно к середине."
-    elif squeeze:
-        vote = MOVE
-        reading = "Коридор сжат сильнее, чем в 80% видимой части. Сжатие часто заканчивается сильным движением."
     else:
-        vote, reading = None, "Цена в середине коридора — перекоса нет."
-    if squeeze and vote in (UP, DOWN):
-        reading += " Коридор при этом сжат — возможен резкий выход."
+        vote = None
+        if pos >= BB_PART_HIGH:
+            reading = "Цена в верхней части коридора — выше средней линии, но до верхней границы ещё есть место."
+        elif pos <= BB_PART_LOW:
+            reading = "Цена в нижней части коридора — ниже средней линии, но до нижней границы ещё есть место."
+        else:
+            reading = "Цена около средней линии коридора — перекоса нет."
+    if squeeze:
+        if vote is None:
+            vote = MOVE
+        reading += (" Коридор сжат сильнее, чем в 80% видимой части: после такого затишья часто бывает "
+                    "сильное движение, но в какую сторону — сжатие не подсказывает.")
     n, k = config.BB_PARAMS
     return _signal(
         "bb", "Боллинджер",
         f"{pos * 100:.0f}% высоты коридора · ширина {width * 100:.1f}%", reading,
         f"Коридор — средняя за {n} свечей ± {k:g} стандартных отклонения. У верхней границы цена «дорогая» "
-        "относительно недавнего прошлого, у нижней — «дешёвая», и её часто тянет к середине. "
-        "Сжатие коридора — затишье, после которого обычно бывает сильное движение в любую сторону.",
-        vote, ["bb"], extreme=bool(pos > 0.9 or pos < 0.1), squeeze=bool(squeeze),
+        "относительно недавнего прошлого, у нижней — «дешёвая», и её часто тянет к середине; "
+        "но в сильном тренде цена может долго идти вдоль границы. "
+        "Сжатие коридора — затишье, после которого часто бывает сильное движение в любую сторону.",
+        vote, ["bb"], extreme=bool(extreme), squeeze=bool(squeeze),
     )
 
 
@@ -216,10 +251,13 @@ def volume_signal(close: np.ndarray, volume: np.ndarray, atr: float) -> dict | N
         reading = "Объём обычный — подсказок нет."
     return _signal(
         "vol", "Объём", f"{ratio:.1f}× от обычного", reading,
-        "Объём — сколько бумаг купили и продали за свечу. Движение на растущем объёме надёжнее: "
+        "Объём — сколько акций сменило владельца за свечу. Движение на растущем объёме надёжнее: "
         "за ним стоят деньги. Рост на падающем объёме слабый и легко ломается.",
         vote, ["vol"],
     )
+
+
+LEVELS_PART_HIGH, LEVELS_PART_LOW = 0.75, 0.25  # верхняя / нижняя четверть диапазона окна
 
 
 def levels_signal(close: np.ndarray, high: np.ndarray, low: np.ndarray, atr: float) -> dict | None:
@@ -229,19 +267,27 @@ def levels_signal(close: np.ndarray, high: np.ndarray, low: np.ndarray, atr: flo
     if hi <= lo:
         return None
     pos = (c - lo) / (hi - lo)
+    to_hi, to_lo = (hi - c) / atr, (c - lo) / atr
     vote = None
     if c > prior_hi:
         vote, reading = UP, "Цена пробила максимум всего окна — после пробоя движение часто продолжается."
     elif c < prior_lo:
         vote, reading = DOWN, "Цена пробила минимум всего окна — после пробоя движение часто продолжается."
-    elif hi - c < atr:
-        reading = (f"Цена в {(hi - c) / atr:.1f} ATR от максимума окна — это сопротивление: "
+    elif to_hi < 1:
+        reading = (f"Цена в {to_hi:.1f} ATR от максимума окна — это сопротивление: "
                    "дальше либо пробой, либо откат.")
-    elif c - lo < atr:
-        reading = (f"Цена в {(c - lo) / atr:.1f} ATR от минимума окна — это поддержка: "
+    elif to_lo < 1:
+        reading = (f"Цена в {to_lo:.1f} ATR от минимума окна — это поддержка: "
                    "дальше либо отскок, либо пробой вниз.")
+    elif pos >= LEVELS_PART_HIGH:
+        reading = (f"Цена в верхней части диапазона окна: до максимума {to_hi:.1f} ATR — "
+                   "это ближайшее сопротивление.")
+    elif pos <= LEVELS_PART_LOW:
+        reading = (f"Цена в нижней части диапазона окна: до минимума {to_lo:.1f} ATR — "
+                   "это ближайшая поддержка.")
     else:
-        reading = "Цена в середине диапазона окна — до сильных уровней далеко."
+        reading = (f"Цена в середине диапазона окна: до максимума {to_hi:.1f} ATR, "
+                   f"до минимума {to_lo:.1f} ATR.")
     return _signal(
         "levels", "Уровни", f"{pos * 100:.0f}% диапазона окна", reading,
         "Максимумы и минимумы прошлого — уровни, где цена уже разворачивалась. У уровня цена часто тормозит, "
@@ -374,6 +420,10 @@ def story(rd: RoundData) -> dict:
     return {
         "items": items, "events": reactions, "big": big, "breakout": breakout,
         "change_pct": change_pct, "change_atr": change_atr, "actual": actual,
+        # Как далеко цена уходила по пути — исход считается по закрытию последней свечи,
+        # и боковик в итоге не значит, что цена всё время была в коридоре.
+        "max_up_atr": float(high[H:].max() - last) / atr,
+        "max_dn_atr": float(last - low[H:].min()) / atr,
     }
 
 
@@ -384,8 +434,18 @@ def explain(sigs: list[dict], st: dict, cons: dict) -> tuple[str, str]:
     actual = st["actual"]
     by_id = {s["id"]: s for s in sigs}
     if actual == FLAT:
-        text = (f"Ни покупатели, ни продавцы не дожали: за {_bars(F)} цена ушла на "
-                f"{_num(st['change_atr'], 1, ' ATR')} при пороге ±{config.SIDEWAYS_ATR_MULT:g} ATR.")
+        band = config.SIDEWAYS_ATR_MULT
+        up, dn = st.get("max_up_atr", 0.0), st.get("max_dn_atr", 0.0)
+        result = f"итог за {_bars(F)} — {_num(st['change_atr'], 1, ' ATR')} при пороге ±{band:g} ATR"
+        outside = [x for x in (f"вверх до {_num(up, 1, ' ATR')}" if up >= band else "",
+                               f"вниз до {_num(-dn, 1, ' ATR')}" if dn >= band else "") if x]
+        if outside:
+            text = (f"По пути цену выносило за коридор — {' и '.join(outside)}, но движение не удержалось: "
+                    f"{result}. Исход считается по закрытию последней свечи, поэтому итог — боковик.")
+            if cons["lean"] is not None:
+                text += f" Сигналы были {VOTE_LABELS[cons['lean']]}."
+            return "Почему в итоге боковик", text
+        text = f"Цена всё время держалась в коридоре: {result}."
         if cons["lean"] is None:
             text += " Сигналы и до этого спорили друг с другом — сильного импульса ждать было неоткуда."
         else:
@@ -396,7 +456,9 @@ def explain(sigs: list[dict], st: dict, cons: dict) -> tuple[str, str]:
     sign = 1 if actual == UP else -1
 
     for ev in st["events"]:
-        if ev["type"] in DRIVER_EVENTS and abs(ev["atr"]) >= BIG_BAR_ATR and np.sign(ev["atr"]) == sign:
+        share = ev["atr"] / st["change_atr"] if st["change_atr"] else 0
+        if (ev["type"] in DRIVER_EVENTS and abs(ev["atr"]) >= BIG_BAR_ATR and np.sign(ev["atr"]) == sign
+                and share >= EVENT_SHARE):
             return title, (
                 f"Главное движение совпало с событием на свече +{ev['bar']}: {ev['title']}. "
                 f"За {_bars(ev['n'])} цена изменилась на {_pct(ev['pct'])}. Индикаторы новости не предсказывают, "
@@ -421,8 +483,7 @@ def explain(sigs: list[dict], st: dict, cons: dict) -> tuple[str, str]:
 
     if trend and trend["vote"] == actual:
         return title, ("Тренд продолжился: цена была " + ("выше" if actual == UP else "ниже")
-                       + " обеих средних, и рынок пошёл дальше в ту же сторону — самый частый сценарий."
-                       + breakout_note)
+                       + " обеих средних, и рынок пошёл дальше в ту же сторону." + breakout_note)
     if br and br["dir"] == actual:
         return title, (f"Пробой: на свече +{br['bar']} цена закрылась "
                        f"{'выше максимума' if actual == UP else 'ниже минимума'} видимой части, "
@@ -440,7 +501,9 @@ def explain(sigs: list[dict], st: dict, cons: dict) -> tuple[str, str]:
                        "и вернулась назад.")
 
     if bb and bb.get("squeeze"):
-        return title, f"Сжатие коридора Боллинджера разрешилось сильным движением {MOVE_WORDS[actual]}."
+        return title, ("Перед прогнозом коридор Боллинджера был сжат — после такого затишья часто бывает "
+                       f"сильное движение. Оно и случилось, но направление ({MOVE_WORDS[actual]}) "
+                       "сжатие не подсказывало.")
 
     macd = by_id.get("macd")
     if macd and macd["vote"] == actual:
@@ -479,10 +542,39 @@ def quick_lessons(answer: dict, outcome: dict, cons: dict, sigs: list[dict], act
         out.append(f"Чтобы выйти из коридора ±{config.SIDEWAYS_ATR_MULT:g} ATR, нужен сильный импульс. "
                    "Боковик выпадает примерно в трети раундов — не забывай про него.")
     elif actual != FLAT and choice == FLAT:
-        hints = [s["title"].split(" · ")[0] for s in sigs if s["vote"] in (actual, MOVE)]
-        if hints:
-            out.append(f"Ты ждал боковика, а движение {MOVE_WORDS[actual]} подсказывали: {', '.join(hints)}.")
+        # Направленные подсказки и «будет сильное движение» — разные вещи, не смешиваем.
+        name = lambda s: s["title"].split(" · ")[0]  # noqa: E731
+        directed = [name(s) for s in sigs if s["vote"] == actual]
+        moves = [name(s) for s in sigs if s["vote"] == MOVE]
+        parts = []
+        if directed:
+            parts.append(f"движение {MOVE_WORDS[actual]} подсказывали: {', '.join(directed)}")
+        if moves:
+            parts.append(f"что будет сильное движение (без направления), предупреждал{'и' if len(moves) > 1 else ''}: "
+                         f"{', '.join(moves)}")
+        if parts:
+            out.append(f"Ты ждал боковика, а {'; '.join(parts)}.")
     return out[:3]
+
+
+def typical_pullback(rd: RoundData, long: bool) -> float | None:
+    """Медиана отката против позиции за F свечей, в ATR, — только по видимой части.
+
+    Для каждой видимой свечи: насколько цена уходила против лонга (шорта) за
+    следующие F свечей. Это «обычный шум» именно этой бумаги в этом окне —
+    игрок мог оценить его до входа, поэтому сравнивать с ним стоп честно.
+    """
+    v = rd.visible
+    close, high, low = (v[k].to_numpy(dtype=float) for k in ("close", "high", "low"))
+    atr = max(rd.atr, 1e-9)
+    moves = []
+    for t in range(len(close) - F):
+        nxt = slice(t + 1, t + 1 + F)
+        move = close[t] - low[nxt].min() if long else high[nxt].max() - close[t]
+        moves.append(max(move, 0.0))
+    if len(moves) < 10:
+        return None
+    return float(np.median(moves)) / atr
 
 
 def trade_lessons(rd: RoundData, answer: dict, outcome: dict, cons: dict) -> list[str]:
@@ -508,19 +600,25 @@ def trade_lessons(rd: RoundData, answer: dict, outcome: dict, cons: dict) -> lis
         before = favorable[:k]
         mfe = float(((before - entry) * sign).max()) / risk if len(before) else 0.0
         later = favorable[k + 1:]
+        noise = typical_pullback(rd, long)
+        in_noise = stop_atr < 0.8 * noise if noise else stop_atr < 0.8
+        noise_note = (f"в половине случаев цена за {_bars(F)} уходит против {side}а дальше, чем на "
+                      f"{noise:.1f} ATR (по видимой части графика)" if noise
+                      else "это меньше среднего размаха одной свечи")
         if len(later) and float(((later - take) * sign).max()) >= 0:
-            if stop_atr < 1.2:
-                out.append(f"Стоп выбило, а потом цена дошла до тейка. Стоп в {stop_atr:.1f} ATR оказался внутри "
-                           "обычного шума — попробуй 1–1.5 ATR.")
+            if in_noise:
+                out.append(f"Стоп выбило, а потом цена дошла до тейка. Стоп стоял в {stop_atr:.1f} ATR, а "
+                           f"{noise_note}: его выбил обычный шум, а не разворот.")
             else:
                 out.append(f"Стоп выбило, а потом цена всё-таки дошла до тейка: направление было верным, "
                            f"но откат вышел глубже {stop_atr:.1f} ATR. Так бывает — иногда помогает вход после отката.")
-        elif stop_atr < 0.8:
-            out.append(f"Стоп был всего в {stop_atr:.1f} ATR — меньше среднего размаха одной свечи. "
-                       "Такой стоп легко выбивает случайным колебанием.")
+        elif in_noise:
+            out.append(f"Стоп стоял в {stop_atr:.1f} ATR, а {noise_note}. "
+                       "Такой стоп чаще выбивает шум, чем настоящий разворот.")
         elif mfe >= 1:
-            out.append(f"До стопа цена успела побывать в плюсе на {_num(mfe, 1, 'R')}. "
-                       "Перенос стопа в безубыток после +1R спас бы сделку.")
+            out.append(f"До стопа цена успела побывать в плюсе на {_num(mfe, 1, 'R')} и развернулась. "
+                       "Решай заранее, что делать с открытой прибылью: держать до тейка, фиксировать часть "
+                       "или подтягивать стоп, — по одной сделке правило не выбрать.")
         else:
             out.append("Цена сразу пошла против позиции — стоп сделал свою работу и ограничил убыток.")
     elif reason == "take":
