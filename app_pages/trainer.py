@@ -67,8 +67,16 @@ def init_state() -> None:
 
 
 def new_round() -> None:
+    prev = ss.get("tr_round")
+    if prev is not None:
+        ss.tr_recent = ([prev.spec.ticker] + [t for t in ss.get("tr_recent", []) if t != prev.spec.ticker])[:2]
+    pool = list(ss.tr_tickers or config.TICKERS)
+    # Одна и та же бумага подряд выглядит как сбой: последние две пропускаем,
+    # пока в фильтре остаётся из чего выбрать.
+    fresh = [t for t in pool if t not in ss.get("tr_recent", [])]
+    tickers = fresh or [t for t in pool if not ss.get("tr_recent") or t != ss.tr_recent[0]] or pool
     try:
-        spec = generate_round(tickers=ss.tr_tickers or None, timeframes=ss.tr_timeframes or None)
+        spec = generate_round(tickers=tickers, timeframes=ss.tr_timeframes or None)
     except ValueError:
         # Под выбранные фильтры нет данных — играем на всех бумагах.
         spec = generate_round()

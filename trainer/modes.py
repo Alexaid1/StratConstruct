@@ -13,7 +13,16 @@ from dataclasses import dataclass
 
 from trainer import config
 from trainer.rounds import RoundData
-from trainer.scoring import OUTCOME_LABELS, OUTCOMES, classify_move, trade_outcome
+from trainer.scoring import (
+    CONF_MAX,
+    CONF_MIN,
+    OUTCOME_LABELS,
+    OUTCOMES,
+    classify_move,
+    quick_brier,
+    quick_points,
+    trade_outcome,
+)
 
 # Стоп и тейк ближе 0.25 ATR — почти гарантированный шум и абсурдные R.
 MIN_DISTANCE_ATR = 0.25
@@ -67,9 +76,9 @@ class QuickMode(Mode):
         try:
             confidence = int(data.get("confidence", 0))
         except (TypeError, ValueError):
-            raise AnswerError("Уверенность — число от 50 до 100") from None
-        if not 50 <= confidence <= 100:
-            raise AnswerError("Уверенность — от 50 до 100%")
+            raise AnswerError(f"Уверенность — число от {CONF_MIN} до {CONF_MAX}") from None
+        if not CONF_MIN <= confidence <= CONF_MAX:
+            raise AnswerError(f"Уверенность — от {CONF_MIN} до {CONF_MAX}%")
         return {"choice": choice, "confidence": confidence}
 
     def evaluate(self, rd: RoundData, answer: dict) -> dict:
@@ -78,8 +87,7 @@ class QuickMode(Mode):
         mult = config.SIDEWAYS_ATR_MULT
         actual = classify_move(last, final, rd.atr, mult)
         correct = bool(answer["choice"] == actual)
-        p = answer["confidence"] / 100
-        brier = (p - float(correct)) ** 2
+        brier = quick_brier(answer["confidence"], correct)
         return {
             "actual": actual,
             "actual_label": OUTCOME_LABELS[actual],
@@ -87,9 +95,9 @@ class QuickMode(Mode):
             "correct": correct,
             "win": correct,
             "brier": round(brier, 4),
-            # Правильное правило очков: 0 у «50 на 50», +100 за уверенное попадание,
-            # −300 за уверенный промах. Переоценивать себя невыгодно.
-            "points": round((0.25 - brier) * 400),
+            # Правильное правило очков: 0 у ответа «наугад» (33%), +100 за уверенное
+            # попадание, −200 за уверенный промах. Переоценивать себя невыгодно.
+            "points": quick_points(answer["confidence"], correct),
             "change_pct": round((final / last - 1) * 100, 2),
             "change_atr": round((final - last) / rd.atr, 2),
             "threshold_atr": mult,

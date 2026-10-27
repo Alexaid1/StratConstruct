@@ -330,6 +330,27 @@ def test_trade_lesson_when_take_hit():
     lessons = A.trade_lessons(rd, answer, outcome, {"lean": DOWN})
     assert lessons[0].startswith("Ты зашёл в лонг, хотя перевес сигналов был за падение")
     assert any("Тейк сработал на свече +6" in x for x in lessons)
+    # Заголовок разбора сделки — про саму сделку, а не про направление цены.
+    assert A.review(rd, "trade", answer, outcome)["title"] == "Лонг: тейк на свече +6, +1.0R"
+
+
+def test_trade_flat_round_does_not_talk_about_the_sideways_corridor():
+    # Находка тестировщика: в разборе сделки был «коридор боковика» из быстрого режима.
+    st = {"actual": FLAT, "change_atr": 0.3, "events": [], "big": None, "breakout": None,
+          "max_up_atr": 1.6, "max_dn_atr": 0.9}
+    title, why = A.explain([], st, {"lean": None}, mode="trade")
+    assert "боковик" not in (title + why).lower() and "вверх до +1.6 ATR" in why
+
+
+@pytest.mark.parametrize("lean, phrase", [(None, "один сигнал из нескольких"), (UP, "большинство сигналов было за рост")])
+def test_single_signal_explanation_agrees_with_consensus(lean, phrase):
+    # Находка тестировщика: «Сработал импульс MACD», а ниже — «явного перевеса не было».
+    sigs = [{"id": "macd", "vote": DOWN}]
+    st = {"actual": DOWN, "change_atr": -3.0, "events": [], "big": None, "breakout": None}
+    _, why = A.explain(sigs, st, {"lean": lean})
+    assert why.startswith("Сработал импульс") and phrase in why
+    _, why = A.explain(sigs, st, {"lean": DOWN})
+    assert "один сигнал" not in why and "большинство" not in why
 
 
 # ─── Целиком на настоящих данных ──────────────────────────────────────────────

@@ -24,6 +24,32 @@ def classify_move(last_close: float, final_close: float, atr: float, mult: float
     return UP if change > 0 else DOWN
 
 
+# ─── Уверенность в быстром режиме ─────────────────────────────────────────────
+# Исходов три, поэтому «наугад» — это 1/3, а не 50%. Уверенность p — вероятность
+# выбранного исхода; остаток делится поровну между двумя другими. Brier считается
+# по всем трём исходам: 0 — идеал, 2/3 — ответ «наугад» (у равномерного прогноза),
+# 2 — уверенный промах. Правило правильное: выгоднее всего ставить ту
+# уверенность, которую на самом деле чувствуешь.
+
+CONF_MIN, CONF_MAX = 35, 100          # 35% ≈ «наугад» (ближайший шаг ползунка к 33%)
+BRIER_RANDOM = 2 / 3                  # Brier равномерного прогноза — база «наугад»
+POINTS_SCALE = 150                    # +100 очков за попадание при 100% уверенности
+
+
+def quick_brier(confidence: float, correct: bool) -> float:
+    """Brier score по трём исходам для прогноза с уверенностью confidence (в %)."""
+    p = confidence / 100
+    rest = (1 - p) / 2
+    if correct:
+        return (1 - p) ** 2 + 2 * rest ** 2
+    return p ** 2 + (1 - rest) ** 2 + rest ** 2
+
+
+def quick_points(confidence: float, correct: bool) -> int:
+    """Очки: 0 у ответа «наугад», +100 за уверенное попадание, −200 за уверенный промах."""
+    return round((BRIER_RANDOM - quick_brier(confidence, correct)) * POINTS_SCALE)
+
+
 @dataclass(frozen=True)
 class TradeResult:
     exit_price: float

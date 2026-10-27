@@ -183,7 +183,7 @@ def macd_signal(macd: np.ndarray, signal: np.ndarray, hist: np.ndarray, atr: flo
     )
 
 
-# Боллинджер: доля высоты коридора. У самой границы — сигнал на возврат,
+# Боллинджер: доля ширины канала. У самой границы — сигнал на возврат,
 # в верхней/нижней трети — только описание положения, без голоса.
 BB_EDGE_HIGH, BB_EDGE_LOW = 0.9, 0.1
 BB_PART_HIGH, BB_PART_LOW = 0.65, 0.35
@@ -201,33 +201,33 @@ def bollinger_signal(close: np.ndarray, upper: np.ndarray, mid: np.ndarray, lowe
     extreme = pos > BB_EDGE_HIGH or pos < BB_EDGE_LOW
     if pos > BB_EDGE_HIGH:
         vote = DOWN
-        reading = ("Цена вышла за верхнюю границу коридора" if pos > 1 else "Цена у верхней границы коридора")
+        reading = ("Цена вышла за верхнюю полосу канала Боллинджера" if pos > 1 else "Цена у верхней полосы канала Боллинджера")
         reading += " — перерастянута вверх, её часто тянет обратно к середине."
     elif pos < BB_EDGE_LOW:
         vote = UP
-        reading = ("Цена вышла за нижнюю границу коридора" if pos < 0 else "Цена у нижней границы коридора")
+        reading = ("Цена вышла за нижнюю полосу канала Боллинджера" if pos < 0 else "Цена у нижней полосы канала Боллинджера")
         reading += " — перерастянута вниз, её часто тянет обратно к середине."
     else:
         vote = None
         if pos >= BB_PART_HIGH:
-            reading = "Цена в верхней части коридора — выше средней линии, но до верхней границы ещё есть место."
+            reading = "Цена в верхней части канала — выше средней линии, но до верхней полосы ещё есть место."
         elif pos <= BB_PART_LOW:
-            reading = "Цена в нижней части коридора — ниже средней линии, но до нижней границы ещё есть место."
+            reading = "Цена в нижней части канала — ниже средней линии, но до нижней полосы ещё есть место."
         else:
-            reading = "Цена около средней линии коридора — перекоса нет."
+            reading = "Цена около средней линии канала — перекоса нет."
     if squeeze:
         if vote is None:
             vote = MOVE
-        reading += (" Коридор сжат сильнее, чем в 80% видимой части: после такого затишья часто бывает "
+        reading += (" Канал сжат сильнее, чем в 80% видимой части: после такого затишья часто бывает "
                     "сильное движение, но в какую сторону — сжатие не подсказывает.")
     n, k = config.BB_PARAMS
     return _signal(
         "bb", "Боллинджер",
-        f"{pos * 100:.0f}% высоты коридора · ширина {width * 100:.1f}%", reading,
-        f"Коридор — средняя за {n} свечей ± {k:g} стандартных отклонения. У верхней границы цена «дорогая» "
+        f"{pos * 100:.0f}% ширины канала · ширина {width * 100:.1f}%", reading,
+        f"Канал — две полосы вокруг средней за {n} свечей: ± {k:g} стандартных отклонения. У верхней полосы цена «дорогая» "
         "относительно недавнего прошлого, у нижней — «дешёвая», и её часто тянет к середине; "
         "но в сильном тренде цена может долго идти вдоль границы. "
-        "Сжатие коридора — затишье, после которого часто бывает сильное движение в любую сторону.",
+        "Сжатие канала — затишье, после которого часто бывает сильное движение в любую сторону.",
         vote, ["bb"], extreme=bool(extreme), squeeze=bool(squeeze),
     )
 
@@ -429,10 +429,17 @@ def story(rd: RoundData) -> dict:
 
 # ─── Объяснение и выводы ──────────────────────────────────────────────────────
 
-def explain(sigs: list[dict], st: dict, cons: dict) -> tuple[str, str]:
+def explain(sigs: list[dict], st: dict, cons: dict, mode: str = "quick") -> tuple[str, str]:
     """Заголовок и главная версия того, что двигало ценой."""
     actual = st["actual"]
     by_id = {s["id"]: s for s in sigs}
+    if actual == FLAT and mode == "trade":
+        # В сделке нет «коридора боковика» — важно только, куда и насколько ходила цена.
+        up, dn = st.get("max_up_atr", 0.0), st.get("max_dn_atr", 0.0)
+        return "Цена почти не сдвинулась", (
+            f"За {_bars(F)} цена ушла всего на {_num(st['change_atr'], 1, ' ATR')} — в пределах обычного шума. "
+            f"По пути её уводило вверх до {_num(up, 1, ' ATR')} и вниз до {_num(-dn, 1, ' ATR')}: "
+            "до стопа и тейка решало, насколько далеко они стояли от этого размаха.")
     if actual == FLAT:
         band = config.SIDEWAYS_ATR_MULT
         up, dn = st.get("max_up_atr", 0.0), st.get("max_dn_atr", 0.0)
@@ -440,12 +447,12 @@ def explain(sigs: list[dict], st: dict, cons: dict) -> tuple[str, str]:
         outside = [x for x in (f"вверх до {_num(up, 1, ' ATR')}" if up >= band else "",
                                f"вниз до {_num(-dn, 1, ' ATR')}" if dn >= band else "") if x]
         if outside:
-            text = (f"По пути цену выносило за коридор — {' и '.join(outside)}, но движение не удержалось: "
+            text = (f"По пути цену выносило за коридор боковика — {' и '.join(outside)}, но движение не удержалось: "
                     f"{result}. Исход считается по закрытию последней свечи, поэтому итог — боковик.")
             if cons["lean"] is not None:
                 text += f" Сигналы были {VOTE_LABELS[cons['lean']]}."
             return "Почему в итоге боковик", text
-        text = f"Цена всё время держалась в коридоре: {result}."
+        text = f"Цена всё время держалась в коридоре боковика: {result}."
         if cons["lean"] is None:
             text += " Сигналы и до этого спорили друг с другом — сильного импульса ждать было неоткуда."
         else:
@@ -454,6 +461,14 @@ def explain(sigs: list[dict], st: dict, cons: dict) -> tuple[str, str]:
 
     title = f"Почему цена пошла {MOVE_WORDS[actual]}"
     sign = 1 if actual == UP else -1
+
+    def solo(text: str) -> str:
+        """Один сработавший сигнал — ещё не перевес: не спорим с блоком «Перевес сигналов»."""
+        if cons["lean"] == actual:
+            return text
+        if cons["lean"] is None:
+            return text + " Но это был один сигнал из нескольких, остальные спорили — заранее перевеса не было."
+        return text + f" Хотя большинство сигналов было {VOTE_LABELS[cons['lean']]} — заранее перевес был против."
 
     for ev in st["events"]:
         share = ev["atr"] / st["change_atr"] if st["change_atr"] else 0
@@ -482,8 +497,8 @@ def explain(sigs: list[dict], st: dict, cons: dict) -> tuple[str, str]:
                          f"{'максимум' if actual == UP else 'минимум'} видимой части.")
 
     if trend and trend["vote"] == actual:
-        return title, ("Тренд продолжился: цена была " + ("выше" if actual == UP else "ниже")
-                       + " обеих средних, и рынок пошёл дальше в ту же сторону." + breakout_note)
+        return title, solo("Тренд продолжился: цена была " + ("выше" if actual == UP else "ниже")
+                           + " обеих средних, и рынок пошёл дальше в ту же сторону." + breakout_note)
     if br and br["dir"] == actual:
         return title, (f"Пробой: на свече +{br['bar']} цена закрылась "
                        f"{'выше максимума' if actual == UP else 'ниже минимума'} видимой части, "
@@ -496,18 +511,18 @@ def explain(sigs: list[dict], st: dict, cons: dict) -> tuple[str, str]:
             if s["id"] == "rsi":
                 what.append(f"RSI был {s['level']:.0f}")
             else:
-                what.append("цена стояла у " + ("нижней" if actual == UP else "верхней") + " границы коридора")
-        return title, (f"Сработал откат от перегрева: {' и '.join(what)}. Цена убежала слишком далеко "
-                       "и вернулась назад.")
+                what.append("цена стояла у " + ("нижней" if actual == UP else "верхней") + " полосы канала Боллинджера")
+        return title, solo(f"Сработал откат от перегрева: {' и '.join(what)}. Цена убежала слишком далеко "
+                           "и вернулась назад.")
 
     if bb and bb.get("squeeze"):
-        return title, ("Перед прогнозом коридор Боллинджера был сжат — после такого затишья часто бывает "
+        return title, ("Перед прогнозом канал Боллинджера был сжат — после такого затишья часто бывает "
                        f"сильное движение. Оно и случилось, но направление ({MOVE_WORDS[actual]}) "
                        "сжатие не подсказывало.")
 
     macd = by_id.get("macd")
     if macd and macd["vote"] == actual:
-        return title, f"Сработал импульс: MACD показывал движение {MOVE_WORDS[actual]}, и оно продолжилось."
+        return title, solo(f"Сработал импульс: MACD показывал движение {MOVE_WORDS[actual]}, и оно продолжилось.")
 
     if cons["lean"] and cons["lean"] != actual:
         return title, ("Цена пошла против большинства сигналов. Так бывает: индикаторы описывают прошлое "
@@ -529,7 +544,7 @@ def quick_lessons(answer: dict, outcome: dict, cons: dict, sigs: list[dict], act
         out.append(f"Большинство сигналов было {VOTE_LABELS[lean]}, и цена пошла туда. "
                    "Перед ответом сверяйся со всеми индикаторами, а не с одним.")
     elif lean is None:
-        out.append("Сигналы спорили друг с другом. В таких раундах честнее ставить уверенность ближе к 50% — "
+        out.append("Сигналы спорили друг с другом. В таких раундах честнее ставить уверенность пониже, ближе к 35% — "
                    "промах обойдётся почти без потерь.")
     else:
         out.append("Сигналы указывали в одну сторону, а цена пошла в другую. Это нормально: "
@@ -539,7 +554,7 @@ def quick_lessons(answer: dict, outcome: dict, cons: dict, sigs: list[dict], act
         out.append(f"Уверенность {conf}% обошлась в {abs(outcome['points'])} очков. Высокую уверенность стоит "
                    "ставить, только когда сигналы смотрят в одну сторону.")
     if actual == FLAT and choice != FLAT:
-        out.append(f"Чтобы выйти из коридора ±{config.SIDEWAYS_ATR_MULT:g} ATR, нужен сильный импульс. "
+        out.append(f"Чтобы выйти из коридора боковика ±{config.SIDEWAYS_ATR_MULT:g} ATR, нужен сильный импульс. "
                    "Боковик выпадает примерно в трети раундов — не забывай про него.")
     elif actual != FLAT and choice == FLAT:
         # Направленные подсказки и «будет сильное движение» — разные вещи, не смешиваем.
@@ -646,6 +661,17 @@ def trade_lessons(rd: RoundData, answer: dict, outcome: dict, cons: dict) -> lis
     return out[:3]
 
 
+def trade_headline(answer: dict, outcome: dict) -> str:
+    side = "Лонг" if answer["direction"] == "long" else "Шорт"
+    r, k = float(outcome["r"]), int(outcome["exit_bar"]) + 1
+    res = _num(r, 1, "R")
+    if outcome["reason"] == "take":
+        return f"{side}: тейк на свече +{k}, {res}"
+    if outcome["reason"] == "stop":
+        return f"{side}: стоп на свече +{k}, {res}"
+    return f"{side}: закрыт по времени, {res}"
+
+
 def review(rd: RoundData, mode: str, answer: dict, outcome: dict) -> dict:
     """Полный разбор раунда. Вызывать только после ответа: здесь есть будущее."""
     sigs = signals(rd)
@@ -654,9 +680,13 @@ def review(rd: RoundData, mode: str, answer: dict, outcome: dict) -> dict:
     for s in sigs:
         s["worked"] = worked(s["vote"], actual)
     cons = consensus(sigs, actual)
-    title, why = explain(sigs, st, cons)
-    lessons = (quick_lessons(answer, outcome, cons, sigs, actual) if mode == "quick"
-               else trade_lessons(rd, answer, outcome, cons))
+    title, why = explain(sigs, st, cons, mode)
+    if mode == "quick":
+        lessons = quick_lessons(answer, outcome, cons, sigs, actual)
+    else:
+        lessons = trade_lessons(rd, answer, outcome, cons)
+        # В сделке главное — чем она кончилась; почему так шла цена — пояснение под заголовком.
+        title = trade_headline(answer, outcome)
     return {
         "actual": actual,
         "actual_label": OUTCOME_LABELS[actual],

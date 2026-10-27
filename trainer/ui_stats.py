@@ -7,6 +7,9 @@
 
 from __future__ import annotations
 
+import math
+from collections import Counter
+
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -54,6 +57,11 @@ div[data-testid="stTabs"] button[role="tab"] p { font-family: var(--tr-display);
 div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] p { color: var(--tr-gold); }
 div[data-testid="stTabs"] div[data-baseweb="tab-highlight"] { background-color: var(--tr-gold); }
 @media (max-width: 900px) { .tr-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Загрузчик файла у Streamlit не переводится — подменяем надписи на русские */
+[data-testid="stFileUploaderDropzone"] button > * { display: none; }
+[data-testid="stFileUploaderDropzone"] button::after { content: "Выбрать файл"; font-size: 14px; }
+[data-testid="stFileUploaderDropzoneInstructions"] span { font-size: 0; }
+[data-testid="stFileUploaderDropzoneInstructions"] span::after { content: "или перетащи сюда CSV журнала"; font-size: 13px; }
 </style>
 """
 
@@ -87,6 +95,24 @@ def _signed(x: float, nd: int = 2) -> str:
     return f"{x:+.{nd}f}".replace("-", "−")
 
 
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    m10, m100 = n % 10, n % 100
+    if m10 == 1 and m100 != 11:
+        return one
+    if 2 <= m10 <= 4 and not 12 <= m100 <= 14:
+        return few
+    return many
+
+
+def _rounds(n: int) -> str:
+    return _plural(n, "раунд", "раунда", "раундов")
+
+
+def _int_dtick(max_count: int, target: int = 5) -> int:
+    """Шаг делений для оси «штук»: целый и не мельче единицы."""
+    return max(1, math.ceil(max_count / target))
+
+
 def _layout(fig: go.Figure, height: int = 300, **kw) -> go.Figure:
     fig.update_layout(
         height=height,
@@ -118,34 +144,45 @@ def quick_block(attempts: list[dict]) -> None:
 
     lo, hi = s["ci"]
     beats_random = lo > s["base_random"]
-    beats_major = s["accuracy"] > s["base_majority"]
+    major = s["base_majority"]
+    beats_major = major is not None and s["accuracy"] > major
     if beats_random:
-        verdict, vcol = "лучше случайного — уверенно", GAIN
+        verdict, vcol = "лучше, чем наугад — и это не везение", GAIN
     elif s["accuracy"] > s["base_random"]:
-        verdict, vcol = "выше 33%, но пока в пределах удачи", ACCENT_2
+        more = (s["prove_at"] or 0) - s["n"]
+        verdict = (f"выше 33%; чтобы отличить от везения — ещё ~{more} {_rounds(more)}"
+                   if s["prove_at"] else "выше 33%, но может быть и везение")
+        vcol = ACCENT_2
     else:
-        verdict, vcol = "не лучше монетки", LOSS
+        verdict, vcol = "пока не лучше, чем наугад", LOSS
     brier_good = s["brier"] < s["brier_ref"]
+    if major is None:
+        base_tile = {"label": "С чем сравнивать", "value": _pct(s["base_random"]),
+                     "sub": "столько угадывает тот, кто тыкает наугад: исходов три",
+                     "tag": "бьёшь «наугад»" if s["accuracy"] > s["base_random"] else "пока нет",
+                     "tag_color": GAIN if s["accuracy"] > s["base_random"] else ACCENT_2}
+    else:
+        base_tile = {"label": "С чем сравнивать", "value": f'{_pct(s["base_random"])}<small>/ {_pct(major)}</small>',
+                     "sub": f'наугад / если всегда отвечать «{s["majority_label"].lower()}» — так часто выходило у тебя',
+                     "tag": "бьёшь обе" if beats_major and beats_random else ("бьёшь «наугад»" if s["accuracy"] > s["base_random"] else "пока нет"),
+                     "tag_color": GAIN if beats_major and beats_random else ACCENT_2}
     tiles([
         {"label": "Точность", "value": _pct(s["accuracy"]),
-         "sub": f'{s["hits"]} из {s["n"]} · 95% интервал <b>{_pct(lo)}–{_pct(hi)}</b>',
+         "sub": f'{s["hits"]} из {s["n"]} · с учётом везения — где-то <b>{_pct(lo)}–{_pct(hi)}</b>',
          "tag": verdict, "tag_color": vcol},
-        {"label": "Базы для сравнения", "value": f'{_pct(s["base_random"])}<small>/ {_pct(s["base_majority"])}</small>',
-         "sub": f'наугад / «всегда {s["majority_label"].lower()}»',
-         "tag": "бьёшь обе" if beats_major and beats_random else ("бьёшь «наугад»" if s["accuracy"] > s["base_random"] else "пока нет"),
-         "tag_color": GAIN if beats_major and beats_random else ACCENT_2},
-        {"label": "Brier score", "value": f'{s["brier"]:.3f}',
-         "sub": "0 — идеал, 0.25 — всегда «50 на 50»",
-         "tag": "калибровка лучше монетки" if brier_good else "уверенность подводит", "tag_color": GAIN if brier_good else LOSS},
+        base_tile,
+        {"label": "Честность уверенности", "value": f'{s["brier"]:.2f}',
+         "sub": f"Brier: 0 — идеал, {s['brier_ref']:.2f} — ответ наугад. Чем меньше, тем лучше ты знаешь, когда прав",
+         "tag": "уверенность по делу" if brier_good else "уверенность подводит", "tag_color": GAIN if brier_good else LOSS},
         {"label": "Очки", "value": _signed(s["points"], 0), "unit": "",
-         "sub": f'{s["n"]} {"раунд" if s["n"] % 10 == 1 and s["n"] % 100 != 11 else "раундов"} · средняя уверенность {_pct(s["avg_confidence"])}'},
+         "sub": f'{s["n"]} {_rounds(s["n"])} · средняя уверенность {_pct(s["avg_confidence"])}'},
     ])
 
     c1, c2 = st.columns([1.15, 1], gap="large")
     with c1:
         cal = s["calibration"]
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=[0.5, 1], y=[0.5, 1], mode="lines", hoverinfo="skip",
+        fig.add_trace(go.Scatter(x=[1 / 3, 1], y=[1 / 3, 1], mode="lines", hoverinfo="skip",
                                  line=dict(color="rgba(189,180,236,0.45)", width=1)))
         fig.add_trace(go.Scatter(
             x=[c["confidence"] for c in cal], y=[c["hit_rate"] for c in cal],
@@ -156,7 +193,7 @@ def quick_block(attempts: list[dict]) -> None:
         ))
         fig.add_annotation(x=0.97, y=0.97, text="идеальная калибровка", showarrow=False,
                            xanchor="right", yanchor="bottom", font=dict(size=11, color=INK_3))
-        _layout(fig, xaxis=dict(range=[0.48, 1.02], tickformat=".0%", title="заявленная уверенность"),
+        _layout(fig, xaxis=dict(range=[0.31, 1.02], tickformat=".0%", title="заявленная уверенность"),
                 yaxis=dict(range=[-0.02, 1.04], tickformat=".0%", title="доля попаданий"))
         _chart(fig, "Калибровка уверенности", "Точки ниже диагонали — ты увереннее, чем точен")
     with c2:
@@ -195,17 +232,28 @@ def trade_block(attempts: list[dict]) -> None:
         return
     lo, hi = s["ci"]
     pf = s["profit_factor"]
+    mci = s["avg_r_ci"]
+    # Три сделки в плюс — ещё не система: вердикт честно учитывает разброс.
+    if mci and mci[0] > 0:
+        tag, tcol = "в плюс — и это не везение", GAIN
+    elif mci and mci[1] < 0:
+        tag, tcol = "в минус — и это не случайность", LOSS
+    elif s["avg_r"] > 0:
+        tag, tcol = "в плюс, но пока может быть везение", ACCENT_2
+    else:
+        tag, tcol = "в минус, но сделок пока мало", ACCENT_2
+    mci_txt = f' · с учётом разброса <b>{_signed(mci[0])}…{_signed(mci[1])}R</b>' if mci else ""
     tiles([
         {"label": "Средний R", "value": _signed(s["avg_r"]), "unit": "R",
-         "sub": "матожидание одной сделки в единицах риска",
-         "tag": "в плюс" if s["avg_r"] > 0 else "в минус", "tag_color": GAIN if s["avg_r"] > 0 else LOSS},
+         "sub": f"сколько в среднем приносит сделка, в долях риска{mci_txt}",
+         "tag": tag, "tag_color": tcol},
         {"label": "Суммарный R", "value": _signed(s["total_r"]), "unit": "R",
          "sub": f'лучшая {_signed(s["best"])}R · худшая {_signed(s["worst"])}R'},
         {"label": "Прибыльных", "value": _pct(s["win_rate"]),
-         "sub": f'95% интервал <b>{_pct(lo)}–{_pct(hi)}</b>'},
+         "sub": f'с учётом везения — где-то <b>{_pct(lo)}–{_pct(hi)}</b>'},
         {"label": "Профит-фактор", "value": f"{pf:.2f}" if pf is not None else "—",
-         "sub": f'{s["n"]} сделок · тейк {s["reasons"].get("take", 0)} · стоп {s["reasons"].get("stop", 0)} · '
-                f'по времени {s["reasons"].get("close", 0)}'},
+         "sub": f'прибыль ÷ убытки, больше 1 — в плюсе · {s["n"]} сделок: тейк {s["reasons"].get("take", 0)}, '
+                f'стоп {s["reasons"].get("stop", 0)}, по времени {s["reasons"].get("close", 0)}'},
     ])
 
     c1, c2 = st.columns([1.15, 1], gap="large")
@@ -223,7 +271,8 @@ def trade_block(attempts: list[dict]) -> None:
                                  marker=dict(size=10, color=ACCENT, line=dict(color=SURFACE, width=2)),
                                  text=[f"{_signed(ys[-1])}R"], textposition="middle left",
                                  textfont=dict(color=INK, size=12)))
-        _layout(fig, xaxis=dict(title="сделка №", rangemode="tozero"), yaxis=dict(title="накоплено, R"))
+        _layout(fig, xaxis=dict(title="сделка №", rangemode="tozero", tick0=0, dtick=_int_dtick(s["n"], 8)),
+                yaxis=dict(title="накоплено, R"))
         _chart(fig, "Кривая капитала в R", "Сумма результатов по порядку сделок")
     with c2:
         rs = s["r_values"]
@@ -233,7 +282,9 @@ def trade_block(attempts: list[dict]) -> None:
         fig.add_trace(go.Histogram(x=[r for r in rs if r > 0], xbins=dict(size=0.5), marker=dict(color=GAIN, cornerradius=4),
                                    hovertemplate="%{x}R: %{y} сделок<extra>прибыль</extra>"))
         fig.add_vline(x=0, line=dict(color="rgba(189,180,236,0.35)", width=1))
-        _layout(fig, barmode="overlay", bargap=0.08, xaxis=dict(title="результат сделки, R"), yaxis=dict(title="сделок"))
+        tallest = max(Counter(math.floor(r / 0.5) for r in rs).values())
+        _layout(fig, barmode="overlay", bargap=0.08, xaxis=dict(title="результат сделки, R"),
+                yaxis=dict(title="сделок", tick0=0, dtick=_int_dtick(tallest), rangemode="tozero"))
         _chart(fig, "Распределение результатов", "Слева от нуля — убытки, справа — прибыль")
 
     df = S.breakdown(attempts, "trade")
@@ -247,7 +298,10 @@ def trade_block(attempts: list[dict]) -> None:
 
 def journal_block(attempts: list[dict], export_bytes: bytes | None, on_import) -> None:
     if attempts:
-        st.dataframe(S.history_table(attempts), width="stretch", hide_index=True, height=360)
+        st.dataframe(S.history_table(attempts), width="stretch", hide_index=True, height=360, column_config={
+            "Период": st.column_config.TextColumn("Период", width="large"),
+            "Прогноз": st.column_config.TextColumn("Прогноз", width="medium"),
+        })
     else:
         empty("Журнал пуст", "Каждая попытка сохраняется сюда: что было на графике, твой прогноз и чем всё кончилось.")
 
@@ -257,8 +311,9 @@ def journal_block(attempts: list[dict], export_bytes: bytes | None, on_import) -
             "⬇ Выгрузить журнал (CSV)", data=export_bytes or b"", file_name="trader-journal.csv",
             mime="text/csv", width="stretch", disabled=not attempts,
         )
-        st.html('<div class="tr-cap">Журнал привязан к этому браузеру и хранится на сервере. '
-                'Сервер иногда перезапускается — выгружай CSV, чтобы ничего не потерять.</div>')
+        st.html('<div class="tr-cap">Журнал хранится на сервере и привязан к этому браузеру. '
+                'Сайт иногда обновляется, а браузер — чистится, поэтому держи копию в CSV: '
+                'её можно загрузить обратно справа.</div>')
     with c2:
         up = st.file_uploader("Восстановить из CSV", type="csv", key="tr_import",
                               help="Файл, выгруженный кнопкой слева. Повторы не задвоятся.")

@@ -8,9 +8,10 @@ from collections import Counter
 import pandas as pd
 
 from trainer import config
-from trainer.scoring import OUTCOME_LABELS, OUTCOMES
+from trainer.scoring import BRIER_RANDOM, OUTCOME_LABELS, OUTCOMES, quick_brier
 
-CONF_BUCKETS = [(50, 59), (60, 69), (70, 79), (80, 89), (90, 100)]
+CONF_BUCKETS = [(35, 49), (50, 59), (60, 69), (70, 79), (80, 89), (90, 100)]
+MAJORITY_MIN_ROUNDS = 10   # на 2–3 раундах база «всегда вниз» = 100% и только путает
 
 
 def wilson(hits: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
@@ -24,6 +25,43 @@ def wilson(hits: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
     return max(0.0, centre - half), min(1.0, centre + half)
 
 
+def rounds_to_prove(hits: int, n: int, base: float, limit: int = 500) -> int | None:
+    """Сколько всего раундов нужно при той же точности, чтобы нижняя граница
+    интервала поднялась выше базы. None — при такой точности не докажешь."""
+    if n == 0 or hits / n <= base:
+        return None
+    p = hits / n
+    for m in range(n, limit + 1):
+        ci = wilson(round(p * m), m)
+        if ci and ci[0] > base:
+            return m
+    return None
+
+
+# 97.5% квантиль t-Стьюдента: на 3–10 сделках он заметно шире 1.96,
+# иначе три удачные сделки подряд выглядели бы «не везением».
+_T975 = {1: 12.71, 2: 4.30, 3: 3.18, 4: 2.78, 5: 2.57, 6: 2.45, 7: 2.36, 8: 2.31, 9: 2.26,
+         10: 2.23, 12: 2.18, 15: 2.13, 20: 2.09, 30: 2.04}
+
+
+def _t975(df: int) -> float:
+    for k in sorted(_T975):
+        if df <= k:
+            return _T975[k]
+    return 1.96
+
+
+def mean_ci(xs: list[float]) -> tuple[float, float] | None:
+    """95% интервал среднего по t-Стьюдента."""
+    n = len(xs)
+    if n < 2:
+        return None
+    m = sum(xs) / n
+    sd = math.sqrt(sum((x - m) ** 2 for x in xs) / (n - 1))
+    half = _t975(n - 1) * sd / math.sqrt(n)
+    return m - half, m + half
+
+
 # ─── Быстрый режим ────────────────────────────────────────────────────────────
 
 def quick_stats(attempts: list[dict]) -> dict:
@@ -32,7 +70,9 @@ def quick_stats(attempts: list[dict]) -> dict:
     База 1 — случайное угадывание: 1/3 при трёх исходах.
     База 2 — «всегда называть самый частый исход» среди сыгранных раундов:
     если рынок в выборке чаще рос, это уже лучше 33%, и бить надо её.
-    Brier — средний (уверенность − исход)², 0.25 у того, кто всегда ставит 50%.
+    Brier — по трём исходам (см. scoring.quick_brier): 0 — идеал, 2/3 — наугад.
+    Пересчитывается из ответа, поэтому старые записи (до перехода на три
+    исхода) считаются по тем же правилам, что и новые.
     """
     rows = [a for a in attempts if a["mode"] == "quick"]
     n = len(rows)
@@ -41,7 +81,7 @@ def quick_stats(attempts: list[dict]) -> dict:
     hits = sum(bool(a["outcome"]["correct"]) for a in rows)
     actual = Counter(a["outcome"]["actual"] for a in rows)
     majority, majority_n = actual.most_common(1)[0]
-    brier = sum(a["outcome"]["brier"] for a in rows) / n
+    brier = sum(quick_brier(a["answer"]["confidence"], bool(a["outcome"]["correct"])) for a in rows) / n
 
     calibration = []
     for lo, hi in CONF_BUCKETS:
@@ -63,12 +103,13 @@ def quick_stats(attempts: list[dict]) -> dict:
         "hits": hits,
         "accuracy": hits / n,
         "ci": wilson(hits, n),
+        "prove_at": rounds_to_prove(hits, n, 1 / 3),
         "base_random": 1 / 3,
-        "base_majority": majority_n / n,
+        "base_majority": majority_n / n if n >= MAJORITY_MIN_ROUNDS else None,
         "majority": majority,
         "majority_label": OUTCOME_LABELS[majority],
         "brier": brier,
-        "brier_ref": 0.25,
+        "brier_ref": BRIER_RANDOM,
         "points": sum(a["outcome"]["points"] for a in rows),
         "avg_confidence": sum(a["answer"]["confidence"] for a in rows) / n / 100,
         "calibration": calibration,
@@ -95,6 +136,7 @@ def trade_stats(attempts: list[dict]) -> dict:
         "n": n,
         "total_r": sum(rs),
         "avg_r": sum(rs) / n,
+        "avg_r_ci": mean_ci(rs),
         "win_rate": len(wins) / n,
         "ci": wilson(len(wins), n),
         "avg_win": sum(wins) / len(wins) if wins else None,
@@ -124,7 +166,8 @@ def breakdown(attempts: list[dict], mode: str) -> pd.DataFrame:
             "Таймфрейм": config.TIMEFRAME_LABELS.get(a["timeframe"], a["timeframe"]),
             "win": bool(o["win"]),
             "points": o["points"],
-            "brier": o.get("brier"),
+            "brier": (quick_brier(a["answer"]["confidence"], bool(o["correct"]))
+                      if mode == "quick" else None),
             "r": o.get("r"),
         })
     df = pd.DataFrame(recs)

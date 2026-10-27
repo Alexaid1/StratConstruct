@@ -3,6 +3,7 @@
 import pytest
 
 from trainer.journal import Journal
+from trainer.scoring import quick_brier
 from trainer.stats import breakdown, history_table, quick_stats, trade_stats, wilson
 
 
@@ -108,10 +109,36 @@ def test_quick_stats_baselines_and_brier():
     s = quick_stats(rows)
     assert s["n"] == 4 and s["hits"] == 3 and s["accuracy"] == 0.75
     assert s["base_random"] == pytest.approx(1 / 3)
-    assert s["majority"] == "up" and s["base_majority"] == 0.75   # «всегда вверх» угадал бы 3 из 4
-    expected_brier = ((0.9 - 1) ** 2 + (0.6 - 1) ** 2 + (0.8 - 0) ** 2 + (0.5 - 1) ** 2) / 4
+    assert s["majority"] == "up"
+    assert s["base_majority"] is None          # на 4 раундах база «всегда вверх» только путает
+    # Brier пересчитывается по трём исходам из ответа — и для старых записей тоже.
+    expected_brier = (quick_brier(90, True) + quick_brier(60, True) + quick_brier(80, False)
+                      + quick_brier(50, True)) / 4
     assert s["brier"] == pytest.approx(expected_brier)
+    assert s["brier_ref"] == pytest.approx(2 / 3)
     assert s["confusion"]["down"]["up"] == 1
+
+
+def test_majority_baseline_appears_after_ten_rounds():
+    rows = [quick_attempt(i, "up", "up" if i < 7 else "down", 60) for i in range(10)]
+    assert quick_stats(rows)["base_majority"] == pytest.approx(0.7)
+
+
+def test_rounds_to_prove_an_edge():
+    from trainer.stats import rounds_to_prove
+
+    assert rounds_to_prove(1, 5, 1 / 3) is None            # 20% — не лучше «наугад»
+    m = rounds_to_prove(5, 10, 1 / 3)                      # 50% на 10 раундах — пока может быть везение
+    assert m is not None and m > 10
+    lo, _ = wilson(round(0.5 * m), m)
+    assert lo > 1 / 3 and wilson(round(0.5 * (m - 1)), m - 1)[0] <= 1 / 3 + 0.02
+
+
+def test_trade_stats_mean_interval():
+    rows = [trade_attempt(i, r, "close") for i, r in enumerate([0.29, 0.86, 0.87])]   # сделки тестировщицы
+    lo, hi = trade_stats(rows)["avg_r_ci"]
+    assert lo < 0 < hi                                     # три сделки в плюс — ещё не система
+    assert trade_stats(rows[:1])["avg_r_ci"] is None
 
 
 def test_calibration_buckets():

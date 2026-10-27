@@ -22,21 +22,34 @@ def test_quick_rejects_bad_answers(rd):
     with pytest.raises(AnswerError):
         quick.parse_answer({"choice": "sideways", "confidence": 70}, rd)
     with pytest.raises(AnswerError):
-        quick.parse_answer({"choice": "up", "confidence": 40}, rd)
+        quick.parse_answer({"choice": "up", "confidence": 30}, rd)
     with pytest.raises(AnswerError):
         quick.parse_answer({"choice": "up", "confidence": "много"}, rd)
+    assert quick.parse_answer({"choice": "up", "confidence": 35}, rd)["confidence"] == 35
 
 
-def test_quick_points_follow_brier(rd):
+def test_quick_points_follow_three_outcome_brier(rd):
     quick = MODES["quick"]
     actual = quick.evaluate(rd, {"choice": "up", "confidence": 50})["actual"]
     hit = quick.evaluate(rd, {"choice": actual, "confidence": 100})
     assert hit["correct"] and hit["points"] == 100 and hit["brier"] == 0
-    coin = quick.evaluate(rd, {"choice": actual, "confidence": 50})
-    assert coin["points"] == 0                  # «50 на 50» не даёт и не отнимает
     wrong = next(c for c in ("up", "flat", "down") if c != actual)
     miss = quick.evaluate(rd, {"choice": wrong, "confidence": 100})
-    assert not miss["correct"] and miss["points"] == -300
+    assert not miss["correct"] and miss["points"] == -200 and miss["brier"] == 2
+    # Около «наугад» (33%) ставка почти ничего не стоит — ни в плюс, ни в минус.
+    for c in (actual, wrong):
+        assert abs(quick.evaluate(rd, {"choice": c, "confidence": 35})["points"]) <= 5
+
+
+def test_three_outcome_brier_is_proper():
+    # Выгоднее всего называть ту уверенность, которая совпадает с настоящей частотой попаданий.
+    from trainer.scoring import quick_brier
+
+    for true_p in (0.4, 0.6, 0.8):
+        expected = {c: true_p * quick_brier(c, True) + (1 - true_p) * quick_brier(c, False)
+                    for c in range(35, 101, 5)}
+        best = min(expected, key=expected.get)
+        assert abs(best / 100 - true_p) <= 0.05, (true_p, best)
 
 
 def test_trade_validation(rd):

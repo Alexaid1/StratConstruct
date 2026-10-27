@@ -24,7 +24,7 @@
     rsi: "#ffd166", macd: "#5cc8ff", signal: "#ff9a3c",
     level: "#ffd166", trend: "#ff4fa8", preview: "rgba(255,79,168,0.6)",
     entry: "#f5f1ff", stop: "#ff5c7a", take: "#2ee6a8",
-    text: "#8f86c8", grid: "rgba(170,150,255,0.06)", cross: "rgba(255,209,102,0.45)",
+    text: "#8f86c8", grid: "rgba(170,150,255,0.06)", cross: "rgba(189,180,236,0.5)",
     event: { cbr_meeting: "#8b6cff", earnings: "#5cc8ff", dividend_cutoff: "#ffd166" },
   };
   const EVENT_SHORT = { cbr_meeting: "ЦБ", earnings: "Отч", dividend_cutoff: "Див" };
@@ -100,6 +100,7 @@
     trendSeries: [],
     choice: null,
     confidence: 70,
+    priceScale: 1,             // до ответа цены нормированы; после — множитель к рублям
     trade: { direction: "long", stop: null, take: null },
     tradeLines: null,
     drag: null,
@@ -135,6 +136,7 @@
   }
 
   const fmt = (x, d = 2) => (x == null || !isFinite(x) ? "—" : Number(x).toFixed(d));
+  const fmtP = (x) => fmt(x * S.priceScale);   // цена графика: до ответа нормированная, после — в рублях
   // Знак — по уже округлённому числу, чтобы −0.02 не превращалось в «−0.00».
   const sgn = (x, d = 2) => {
     if (x == null || !isFinite(x)) return "—";
@@ -170,7 +172,9 @@
       vertLine: { color: C.cross, labelBackgroundColor: "#2a2270", style: LC.LineStyle.Dashed },
       horzLine: { color: C.cross, labelBackgroundColor: "#2a2270", style: LC.LineStyle.Dashed },
     },
-    localization: { locale: "ru-RU", timeFormatter: (t) => crossLabel(t), priceFormatter: (p) => fmt(p) },
+    // Без общего priceFormatter: он перекрыл бы формат всех шкал, и RSI после ответа
+    // тоже «переводился бы в рубли». Рубли — только у серий ценовой панели (priceFmt).
+    localization: { locale: "ru-RU", timeFormatter: (t) => crossLabel(t) },
     handleScroll: false,
     handleScale: false,
   });
@@ -180,8 +184,9 @@
     if (S.labels && S.labels[i]) {
       const lab = S.labels[i];                       // «дд.мм.гггг» или «дд.мм.гггг чч:мм»
       if (lab.length <= 10) return lab.slice(0, 6) + lab.slice(8, 10);   // дд.мм.гг
-      const day = lab.slice(0, 5), prev = S.labels[i - 1];
-      return !prev || prev.slice(0, 5) !== day ? day : lab.slice(11, 16); // дд.мм на смене дня, иначе чч:мм
+      // Деления библиотека выбирает сама, смена дня на них почти не попадает —
+      // поэтому дата на каждом делении: «дд.мм чч:мм».
+      return lab.slice(0, 5) + " " + lab.slice(11, 16);
     }
     const rel = i - (S.H - 1);
     return rel === 0 ? "сейчас" : (rel > 0 ? "+" + rel : "−" + Math.abs(rel));
@@ -191,6 +196,8 @@
   // в новом раунде остались бы даты прошлого.
   function refreshAxis() {
     chart.applyOptions({ timeScale: { tickMarkFormatter: (t) => tickLabel(t) } });
+    [spacer, candles, extent, preview, ind.ma1, ind.ma2, ind.bbU, ind.bbM, ind.bbL]
+      .forEach((s) => { if (s) s.applyOptions({ priceFormat: priceFmt() }); });
   }
   function crossLabel(t) {
     const i = iOf(t);
@@ -199,28 +206,32 @@
     return rel === 0 ? "свеча 0 · сейчас" : "свеча " + (rel > 0 ? "+" + rel : "−" + Math.abs(rel));
   }
 
+  // Цена на ценовой панели: до ответа нормированная, после — в рублях.
+  // Новый объект формата сбрасывает кэш подписей шкалы.
+  const priceFmt = () => ({ type: "custom", minMove: 0.01, formatter: (p) => fmt(p * S.priceScale) });
+
   // Невидимый «каркас» на все слоты: ось времени сразу знает про зону будущего.
   const spacer = chart.addSeries(LC.LineSeries, {
     lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
-    autoscaleInfoProvider: () => null,
+    autoscaleInfoProvider: () => null, priceFormat: priceFmt(),
   });
   const candles = chart.addSeries(LC.CandlestickSeries, {
     upColor: C.up, downColor: C.down, borderVisible: false,
     wickUpColor: C.up, wickDownColor: C.down,
-    priceLineVisible: false, lastValueVisible: true,
+    priceLineVisible: false, lastValueVisible: true, priceFormat: priceFmt(),
   });
   // Невидимая серия-«распорка»: две точки на границах зоны боковика или
   // стопа/тейка, чтобы автошкала держала их в кадре. Свой autoscaleInfoProvider
   // у свечей не годится — вместе с маркерами он уходит в бесконечную рекурсию.
   const extent = chart.addSeries(LC.LineSeries, {
     color: "rgba(0,0,0,0)", lineVisible: false, pointMarkersVisible: false,
-    lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
+    lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, priceFormat: priceFmt(),
   });
   const markers = LC.createSeriesMarkers(candles, []);
   const preview = chart.addSeries(LC.LineSeries, {
     color: C.preview, lineWidth: 2, lineStyle: LC.LineStyle.Dashed,
     lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
-    autoscaleInfoProvider: () => null,
+    autoscaleInfoProvider: () => null, priceFormat: priceFmt(),
   });
 
   let ind = {};               // серии индикаторов
@@ -262,19 +273,22 @@
       ind.vol.setData(bars.map(volBar));
     }
     if (on.has("bb")) {
-      ind.bbU = chart.addSeries(LC.LineSeries, lineOpts(C.bb, 1), 0);
-      ind.bbM = chart.addSeries(LC.LineSeries, lineOpts(C.bbMid, 1, { lineStyle: LC.LineStyle.Dashed }), 0);
-      ind.bbL = chart.addSeries(LC.LineSeries, lineOpts(C.bb, 1), 0);
+      ind.bbU = chart.addSeries(LC.LineSeries, lineOpts(C.bb, 1, { priceFormat: priceFmt() }), 0);
+      ind.bbM = chart.addSeries(LC.LineSeries, lineOpts(C.bbMid, 1, { lineStyle: LC.LineStyle.Dashed, priceFormat: priceFmt() }), 0);
+      ind.bbL = chart.addSeries(LC.LineSeries, lineOpts(C.bb, 1, { priceFormat: priceFmt() }), 0);
       ind.bbU.setData(indData("bb_upper", n));
       ind.bbM.setData(indData("bb_mid", n));
       ind.bbL.setData(indData("bb_lower", n));
     }
-    if (on.has("ma1")) { ind.ma1 = chart.addSeries(LC.LineSeries, lineOpts(C.ma1, 2), 0); ind.ma1.setData(indData("ma1", n)); }
-    if (on.has("ma2")) { ind.ma2 = chart.addSeries(LC.LineSeries, lineOpts(C.ma2, 2), 0); ind.ma2.setData(indData("ma2", n)); }
+    if (on.has("ma1")) { ind.ma1 = chart.addSeries(LC.LineSeries, lineOpts(C.ma1, 2, { priceFormat: priceFmt() }), 0); ind.ma1.setData(indData("ma1", n)); }
+    if (on.has("ma2")) { ind.ma2 = chart.addSeries(LC.LineSeries, lineOpts(C.ma2, 2, { priceFormat: priceFmt() }), 0); ind.ma2.setData(indData("ma2", n)); }
 
     let pane = 1;
     if (on.has("rsi")) {
-      ind.rsi = chart.addSeries(LC.LineSeries, lineOpts(C.rsi, 2, { lastValueVisible: true }), pane);
+      // Шкала RSI всегда 0–100: иначе одна из линий 30/70 уезжает за край панели.
+      ind.rsi = chart.addSeries(LC.LineSeries, lineOpts(C.rsi, 2, {
+        lastValueVisible: true, autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
+      }), pane);
       ind.rsi.setData(indData("rsi", n));
       [70, 30].forEach((v) => ind.rsi.createPriceLine({ price: v, color: "rgba(189,180,236,0.35)", lineWidth: 1, lineStyle: LC.LineStyle.Dashed, axisLabelVisible: false, title: "" }));
       pane++;
@@ -340,6 +354,11 @@
     el.fog.classList.toggle("thin", fogW < 120);
     el.fog.classList.toggle("dim", S.mode === "trade");
     el.fog.classList.toggle("gone", fogW < 2);
+    // «?» — по центру ценовой панели, а не всего графика: с RSI и MACD
+    // иначе он съезжает вниз и садится на подписи зон и событий.
+    const mark = el.fogCap.parentElement;
+    mark.style.bottom = Math.max(0, bottom - mainH) + "px";
+    mark.classList.remove("hide");
     const left = S.H + S.F - S.shown;
     el.fogCap.textContent = left > 0 ? (left + " " + plural(left, "свеча", "свечи", "свечей") + " скрыто") : "";
 
@@ -364,6 +383,10 @@
         html += box("upz" + pick("up"), 0, yTop, "ВВЕРХ ▲");
         html += box("band" + pick("flat"), yTop, yBot - yTop, `БОКОВИК ±${fmt(pct, 1)}%`);
         html += box("downz" + pick("down"), yBot, mainH - yBot, "ВНИЗ ▼");
+        // «?» — в свободной части над зоной «вверх», чтобы не садиться на подписи зон.
+        const room = yTop - 30;
+        mark.style.bottom = Math.max(0, bottom - room) + "px";
+        mark.classList.toggle("hide", room < 90);
       }
     }
     if (S.mode === "trade" && S.trade.stop != null) {
@@ -372,8 +395,11 @@
       if (yE != null && yS != null && yT != null) {
         const risk = Math.abs(e - st);
         const rr = Math.abs(tk - e) / risk;
-        html += box("take", Math.min(yE, yT), Math.abs(yE - yT), `ТЕЙК +${fmt(rr, 1)}R`, "");
-        html += box("stop", Math.min(yE, yS), Math.abs(yE - yS), "СТОП −1R", "");
+        // Подпись — у дальнего от входа края; если бокс узкий — снаружи него,
+        // чтобы «ТЕЙК» и «СТОП» не налезали друг на друга у линии входа.
+        const side = (yEdge) => (yEdge < yE ? " lt" : " lb") + (Math.abs(yE - yEdge) < 26 ? " out" : "");
+        html += box("take" + side(yT), Math.min(yE, yT), Math.abs(yE - yT), `ТЕЙК +${fmt(rr, 1)}R`, "");
+        html += box("stop" + side(yS), Math.min(yE, yS), Math.abs(yE - yS), "СТОП −1R", "");
       }
     }
     // События будущего, дата которых известна заранее (до ответа).
@@ -429,8 +455,8 @@
     const prev = k > 0 ? bars[k - 1][3] : c[0];
     const chg = (c[3] / prev - 1) * 100;
     el.legend.innerHTML =
-      `<span>О <b>${fmt(c[0])}</b></span><span>М <b>${fmt(c[1])}</b></span>` +
-      `<span>Н <b>${fmt(c[2])}</b></span><span>З <b>${fmt(c[3])}</b></span>` +
+      `<span>О <b>${fmtP(c[0])}</b></span><span>М <b>${fmtP(c[1])}</b></span>` +
+      `<span>Н <b>${fmtP(c[2])}</b></span><span>З <b>${fmtP(c[3])}</b></span>` +
       `<span class="chg ${chg >= 0 ? "pos" : "neg"}">${sgn(chg)}%</span>`;
   }
 
@@ -482,7 +508,7 @@
 
   // ─── Рисование ─────────────────────────────────────────────────────────────
   function addLevel(price, record = true) {
-    const line = candles.createPriceLine({ price, color: C.level, lineWidth: 1, lineStyle: LC.LineStyle.Dashed, axisLabelVisible: true, title: "" });
+    const line = candles.createPriceLine({ price, color: C.level, lineWidth: 2, lineStyle: LC.LineStyle.Solid, axisLabelVisible: true, title: "уровень" });
     S.levelLines.push(line);
     if (record) S.drawings.push({ type: "level", price: +price.toFixed(4) });
   }
@@ -556,8 +582,19 @@
     const p = S.payload, cfg = S.st.config;
     const e = p.last_close, a = p.atr;
     const sign = S.trade.direction === "long" ? 1 : -1;
-    S.trade.stop = round2(e - sign * cfg.stop_atr * a);
-    S.trade.take = round2(e + sign * cfg.take_atr * a);
+    // Стоп и R:R прошлой сделки переносим в новую — игрок не выставляет их заново.
+    const last = S.prefs.trade || {};
+    const stopAtr = last.stop_atr >= cfg.min_dist_atr && last.stop_atr <= 6 ? last.stop_atr : cfg.stop_atr;
+    const rr = last.rr >= 0.3 && last.rr <= 8 ? last.rr : cfg.take_atr / cfg.stop_atr;
+    S.trade.stop = round2(e - sign * stopAtr * a);
+    S.trade.take = round2(e + sign * stopAtr * rr * a);
+  }
+  function rememberTrade() {
+    const e = S.payload.last_close, a = S.payload.atr;
+    const risk = Math.abs(e - S.trade.stop);
+    if (!(risk > 0 && a > 0)) return;
+    S.prefs.trade = { stop_atr: Math.round(risk / a * 10) / 10, rr: Math.round(Math.abs(S.trade.take - e) / risk * 10) / 10 };
+    store.set(PREFS_KEY, S.prefs);
   }
   const round2 = (x) => Math.round(x * 100) / 100;
   const minDist = () => S.st.config.min_dist_atr * S.payload.atr;
@@ -750,12 +787,20 @@
   // ─── Панель ответа ─────────────────────────────────────────────────────────
   const NOVICE_ROUNDS = 5;   // сколько первых раундов режима показывать пояснения для новичка
   const SINGLE_COLUMN_PX = 980;  // как в style.css: уже — панель ответа уезжает под график
-  const CONF_WORDS = [[50, "монетка"], [60, "чуть лучше, чем наугад"], [70, "скорее да"], [80, "уверен"], [90, "очень уверен"], [100, "железно"]];
+  // Исходов три, поэтому «наугад» — 33%, а ползунок начинается с 35%.
+  // Очки — как в trainer/scoring.py: Brier по трём исходам, 0 очков у ответа наугад.
+  const CONF_MIN = 35;
+  const CONF_WORDS = [[35, "наугад — исходов три"], [45, "чуть лучше, чем наугад"], [60, "скорее да"], [75, "уверен"], [90, "очень уверен"], [100, "железно"]];
   const confWord = (v) => (CONF_WORDS.find(([t]) => v <= t) || CONF_WORDS[CONF_WORDS.length - 1])[1];
+  const brier3 = (p, hit) => {
+    const rest = (1 - p) / 2;
+    return hit ? (1 - p) ** 2 + 2 * rest ** 2 : p ** 2 + (1 - rest) ** 2 + rest ** 2;
+  };
   const stakes = (v) => {
     const p = v / 100;
-    return { win: Math.round((0.25 - (1 - p) ** 2) * 400), lose: Math.round((0.25 - p ** 2) * 400) };
+    return { win: Math.round((2 / 3 - brier3(p, true)) * 150), lose: Math.round((2 / 3 - brier3(p, false)) * 150) };
   };
+  const confFill = (v) => ((v - CONF_MIN) / (100 - CONF_MIN) * 100).toFixed(1) + "%";
 
   function renderPanel(animate = true) {
     el.panel.classList.toggle("static", !animate);
@@ -793,7 +838,7 @@
       </div>
       <div class="conf">
         <div class="row"><span>Уверенность</span><b id="confVal">${S.confidence}%</b></div>
-        <input type="range" id="conf" min="50" max="100" step="5" value="${S.confidence}" aria-label="Уверенность" style="--fill:${(S.confidence - 50) * 2}%">
+        <input type="range" id="conf" min="${CONF_MIN}" max="100" step="5" value="${S.confidence}" aria-label="Уверенность" style="--fill:${confFill(S.confidence)}">
         <div class="word" id="confWord">${confWord(S.confidence)}</div>
         <div class="stakes"><span>угадаешь <b class="pos" id="stWin">${sgn(st.win, 0)}</b></span><span>промах <b class="neg" id="stLose">${sgn(st.lose, 0)}</b></span></div>
       </div>
@@ -858,6 +903,9 @@
     set("rrVal", `1 : ${fmt(rr, 1)}`);
     const rk = $("rrRisk"), rw = $("rrReward");
     if (rk && rw) { rk.style.flex = String(1); rw.style.flex = String(Math.max(0.05, rr)); }
+    // Подсвечиваем пресет, который сейчас и правда выбран.
+    el.panel.querySelectorAll("[data-satr]").forEach((b) => b.classList.toggle("on", Math.abs(risk / a - Number(b.dataset.satr)) < 0.05));
+    el.panel.querySelectorAll("[data-rr]").forEach((b) => b.classList.toggle("on", Math.abs(rr - Number(b.dataset.rr)) < 0.05));
     if (skip !== "stop") { const n = $("inStop"); if (n) n.value = fmt(S.trade.stop); }
     if (skip !== "take") { const n = $("inTake"); if (n) n.value = fmt(S.trade.take); }
   }
@@ -965,7 +1013,7 @@
   el.panel.addEventListener("input", (e) => {
     if (e.target.id === "conf") {
       S.confidence = Number(e.target.value);
-      e.target.style.setProperty("--fill", (S.confidence - 50) * 2 + "%");
+      e.target.style.setProperty("--fill", confFill(S.confidence));
       $("confVal").textContent = S.confidence + "%";
       $("confWord").textContent = confWord(S.confidence);
       const st = stakes(S.confidence);
@@ -1013,7 +1061,10 @@
     S.waiting = true;
     S.error = null;
     if (S.mode === "quick") emit("answer", { choice: S.choice, confidence: S.confidence, drawings: S.drawings });
-    else emit("answer", { direction: S.trade.direction, stop: S.trade.stop, take: S.trade.take, drawings: S.drawings });
+    else {
+      rememberTrade();
+      emit("answer", { direction: S.trade.direction, stop: S.trade.stop, take: S.trade.take, drawings: S.drawings });
+    }
     renderPanel(false);
     // В одну колонку кнопка ответа — под графиком; без прокрутки игрок пропустит раскрытие.
     if (window.innerWidth <= SINGLE_COLUMN_PX) {
@@ -1093,13 +1144,13 @@
   function howtoHtml() {
     const cfg = S.st.config, p = S.st.payload;
     const [m1, m2] = cfg.ma, [mf, ms, msig] = cfg.macd, [bn, bk] = cfg.bb;
-    const levels = [50, 60, 70, 80, 90, 100];
+    const levels = [35, 50, 60, 70, 80, 90, 100];
     const stakeRow = (k, cls) => levels.map((v) => `<td class="${cls}">${sgn(stakes(v)[k], 0)}</td>`).join("");
     const ind = [
       [C.ma1, `MA ${m1} и MA ${m2}`, `Скользящие средние — средняя цена закрытия за ${m1} и ${m2} свечей.`,
         "Цена выше обеих и они растут — тренд вверх, ниже и падают — вниз. Разворот средние покажут с опозданием."],
-      ["#bdb4ec", "Боллинджер", `Коридор: средняя за ${bn} свечей ± ${bk} стандартных отклонения.`,
-        "У верхней границы цена «дорогая», у нижней — «дешёвая», но в сильном тренде она может долго идти вдоль границы. Сжатый коридор — затишье перед сильным движением, направление он не подсказывает."],
+      ["#bdb4ec", "Боллинджер", `Две полосы вокруг средней за ${bn} свечей: ± ${bk} стандартных отклонения.`,
+        "У верхней полосы цена «дорогая», у нижней — «дешёвая», но в сильном тренде она может долго идти вдоль полосы. Полосы сжались — затишье перед сильным движением, направление сжатие не подсказывает."],
       [C.up, "Объём", "Сколько акций сменило владельца за свечу.",
         "Движение на большом объёме надёжнее. Рост на падающем объёме слабый и легко ломается."],
       [C.rsi, `RSI ${cfg.rsi}`, "Сила движений вверх против движений вниз, шкала от 0 до 100.",
@@ -1129,7 +1180,8 @@
             Результат считается в R: сколько своих рисков ты заработал или потерял.</p></div>
         </div>`)}
         ${sec("03", "Уверенность — это ставка", `<p>Чем увереннее прогноз, тем больше очков за попадание — и тем дороже промах.
-          При 50% ты ничем не рискуешь. Выгоднее всего ставить ровно ту уверенность, которую чувствуешь.</p>
+          Исходов три, поэтому ответ наугад угадывает в трети случаев: при 35% ты почти ничем не рискуешь.
+          Выгоднее всего ставить ровно ту уверенность, которую чувствуешь.</p>
           <table class="h-stakes"><thead><tr><th>уверенность</th>${levels.map((v) => `<th>${v}%</th>`).join("")}</tr></thead>
           <tbody><tr><th>угадал</th>${stakeRow("win", "pos")}</tr><tr><th>промах</th>${stakeRow("lose", "neg")}</tr></tbody></table>`)}
         ${sec("04", "Как читать индикаторы", `<div class="h-ind">${ind.map(([col, name, what, how]) => `
@@ -1155,9 +1207,9 @@
           <h2 id="howTitle">Угадай, куда <span>пойдёт цена</span></h2>
         </header>
         <ol class="intro-steps">
-          ${step(1, "Посмотри на график", "Это настоящие акции Мосбиржи. Какие именно и за какие даты — узнаешь после ответа.")}
-          ${step(2, "Выбери: вверх, вниз или боковик", "И насколько ты уверен — от этого зависит, сколько очков получишь или потеряешь.")}
-          ${step(3, "Смотри, что было дальше", "Будущее откроется свеча за свечой, а под графиком появится разбор: почему так вышло.")}
+          ${step(1, "Посмотри на график", "Это настоящие акции Мосбиржи. Тикер и даты скрыты, цены пересчитаны: первое закрытие = 100. После ответа всё откроется в рублях.")}
+          ${step(2, "Выбери: вверх, вниз или боковик", `Считается, где закроется последняя из ${S.F} свечей, а не пик по пути. Уверенность — это ставка: больше уверен — больше очков, но и больше риск.`)}
+          ${step(3, "Смотри, что было дальше", "Будущее откроется свеча за свечой, а под графиком — разбор, почему так вышло. Освоишься — попробуй режим «Сделка»: стоп, тейк и результат в R.")}
         </ol>
         <button class="cta" data-howto="close">Играть ${ICON.next}</button>
         <button class="more" data-howto="full">Подробные правила и как читать индикаторы</button>
@@ -1210,18 +1262,21 @@
       sc = sc.parentElement;
     }
     if (!sc || sc === pdoc.body) sc = pdoc.scrollingElement;
-    const header = pdoc.querySelector('[data-testid="stHeader"]');
-    const offset = (header ? header.getBoundingClientRect().bottom : 0) + 8;
-    const y = frame.getBoundingClientRect().top + target.getBoundingClientRect().top;
-    const dy = y - offset;
+    const delta = () => {
+      const header = pdoc.querySelector('[data-testid="stHeader"]');
+      const offset = (header ? header.getBoundingClientRect().bottom : 0) + 8;
+      return frame.getBoundingClientRect().top + target.getBoundingClientRect().top - offset;
+    };
+    const dy = delta();
     if (Math.abs(dy) < 4) return;
-    const start = sc.scrollTop;
     sc.scrollBy({ top: dy, behavior });
     // Плавная прокрутка иногда молча не срабатывает (фоновая вкладка, встроенные
-    // браузеры) — тогда докручиваем мгновенно.
-    if (behavior === "smooth") {
-      setTimeout(() => { if (Math.abs(sc.scrollTop - start) < 2) sc.scrollBy({ top: dy, behavior: "auto" }); }, 600);
-    }
+    // браузеры) или её сбивает смена высоты iframe (закрылось окно правил) —
+    // через полсекунды перемеряем и докручиваем мгновенно.
+    setTimeout(() => {
+      const rest = delta();
+      if (Math.abs(rest) >= 4) sc.scrollBy({ top: rest, behavior: "auto" });
+    }, behavior === "smooth" ? 650 : 60);
   }
   window.addEventListener("resize", () => { if (!el.howto.hidden) fitHowto(); });
   // detail === 0 — «клик» с клавиатуры (Enter/пробел на кнопке).
@@ -1297,7 +1352,8 @@
           <button class="cta" id="next2">Следующий раунд ${ICON.next}</button>
         </div>
       </div>
-      <p class="rv-note">Индикаторы описывают прошлое и дают перевес вероятностей, а не гарантию.
+      <p class="rv-note"><b>ATR</b> — средний размах одной свечи (за ${S.st.config.atr} свечей), мерило обычного шума:
+        «2 ATR» — это примерно два обычных шага цены. Индикаторы описывают прошлое и дают перевес вероятностей, а не гарантию.
         Настоящих причин движения не знает никто — разбор опирается только на график и календарь событий.</p>`;
     el.review.hidden = false;
   }
@@ -1379,6 +1435,7 @@
     S.F = st.payload.future_slots;
     S.phase = st.phase;
     S.labels = st.payload.labels && st.phase === "predict" ? padLabels(st.payload.labels) : null;
+    S.priceScale = 1;
     refreshAxis();
     S.choice = null;
     S.waiting = false;
@@ -1480,6 +1537,8 @@
     S.revealing = false;
     S.revealDone = true;
     S.labels = S.payload.labels || null;
+    // После ответа шкала — в рублях: бумага раскрыта, нормировка больше не нужна.
+    S.priceScale = (S.payload.identity && S.payload.identity.scale) || 1;
     refreshAxis();
 
     const m = eventMarkers(S.H + S.F);
@@ -1588,6 +1647,24 @@
     if (first && !store.get(HOWTO_KEY, false)) {
       store.set(HOWTO_KEY, true);
       openHowto(false, "intro");
+      // Под заставкой кнопка «Играть» на ноутбуке оказывается ниже экрана — подкрутим к ней.
+      setTimeout(() => {
+        try {
+          const cta = el.howto.querySelector(".cta");
+          const frame = window.frameElement;
+          if (cta && frame && frame.getBoundingClientRect().top + cta.getBoundingClientRect().bottom > window.parent.innerHeight) {
+            scrollToEl(el.howto);
+          }
+        } catch (e) { /* чужой домен — оставляем как есть */ }
+      }, 600);
+    } else if (first) {
+      // Вернувшийся игрок героя уже видел — сразу к игре, если она почти вся за экраном.
+      setTimeout(() => {
+        try {
+          const frame = window.frameElement;
+          if (frame && frame.getBoundingClientRect().top > window.parent.innerHeight * 0.45) focusGame();
+        } catch (e) { /* чужой домен — оставляем как есть */ }
+      }, 600);
     }
     fitHeight();
   }
