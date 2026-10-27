@@ -296,6 +296,24 @@ def test_trade_lesson_never_gives_hindsight_breakeven_rule():
     assert not any("спас бы" in x for x in lessons)
 
 
+def test_typical_move_sees_the_trend():
+    # В ровном росте цена в сторону лонга уходит дальше, чем против него; у шорта — наоборот.
+    df = drifting_series(0.004, noise=0.001)
+    rd = build_round(spec_for(df), df, NO_EVENTS)
+    assert A.typical_move(rd, long=True, against=False) > A.typical_move(rd, long=True, against=True)
+    assert A.typical_move(rd, long=False, against=True) == pytest.approx(A.typical_move(rd, long=True, against=False))
+
+
+def test_far_take_lesson_uses_the_typical_move():
+    rd, e, a, fut = _trade_round()                          # спокойное будущее — закрытие по времени
+    run = A.typical_move(rd, long=True, against=False)
+    answer = {"direction": "long", "entry": e, "stop": e - 2 * a, "take": e + (1.6 * run + 0.5) * a}
+    outcome = MODES["trade"].evaluate(rd, answer)
+    assert outcome["reason"] == "close"
+    lessons = A.trade_lessons(rd, answer, outcome, {"lean": None})
+    assert any("далеко" in x and "в половине случаев" in x for x in lessons)
+
+
 def test_typical_pullback_uses_only_the_visible_part():
     rd, e, a, fut = _trade_round()
     before = A.typical_pullback(rd, long=True)

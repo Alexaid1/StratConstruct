@@ -191,6 +191,17 @@ def import_journal(upload) -> None:
     st.success(f"Готово: добавлено попыток — {added}." if added else "Все попытки из файла уже были в журнале.")
 
 
+def typical_moves(rd) -> dict:
+    """Медианный ход цены против позиции и в её сторону за раунд, в ATR (подсказка к стопу и тейку)."""
+    def r1(x):
+        return None if x is None else round(x, 1)
+    return {
+        side: {"against": r1(analysis.typical_move(rd, side == "long", against=True)),
+               "with": r1(analysis.typical_move(rd, side == "long", against=False))}
+        for side in ("long", "short")
+    }
+
+
 def game_state() -> dict:
     rd, mode = ss.tr_round, ss.tr_mode
     done = mode_attempts(mode)
@@ -209,6 +220,8 @@ def game_state() -> dict:
         # Разбор знает будущее — только после ответа.
         "review": ss.tr_review if reveal else None,
         "settings": settings_state(),
+        # Обычный ход цены за раунд — по видимой части, поэтому можно показать до ответа.
+        "moves": typical_moves(rd),
         "drawings": ss.tr_drawings,
         "error": ss.tr_error,
         "error_id": ss.tr_error_id,

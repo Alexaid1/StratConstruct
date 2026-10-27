@@ -396,7 +396,7 @@ def condition_builder(prefix: str, cols: list[str]) -> dict | None:
         val = c4.selectbox("Колонка", cols, key=f"{prefix}_col",
                            label_visibility="collapsed")
 
-    added = c5.button("＋ Добавить", key=f"{prefix}_add", use_container_width=True)
+    added = c5.button("＋ Добавить", key=f"{prefix}_add", width="stretch")
     return {"indicator": left, "operator": op, "value": val} if added else None
 
 
@@ -444,7 +444,7 @@ with st.sidebar:
                                   max_value=2.0, step=0.01, format="%.2f") / 100
 
     st.divider()
-    if st.button("🗑 Сбросить стратегию", use_container_width=True):
+    if st.button("🗑 Сбросить стратегию", width="stretch"):
         for key in ["indicators", "entry_conditions", "exit_conditions", "result", "enriched_df", "ohlcv_df"]:
             st.session_state[key] = [] if isinstance(st.session_state[key], list) else None
         st.rerun()
@@ -463,7 +463,7 @@ with st.container(border=True):
         "Загрузи готовый пример и сразу запусти бэктест — "
         "**EMA-кроссовер (20/50) на BTC/USDT**"
     )
-    if st.button("▶ Загрузить пример и запустить", type="primary", use_container_width=True):
+    if st.button("▶ Загрузить пример и запустить", type="primary", width="stretch"):
         ex = EXAMPLE_STRATEGY
         st.session_state.indicators       = [dict(i) for i in ex["indicators"]]
         st.session_state.entry_conditions = [dict(c) for c in ex["entry_conditions"]]
@@ -504,7 +504,7 @@ for i, (pname, ptype, default, pmin, pmax) in enumerate(param_defs):
                 pname, value=float(default), min_value=float(pmin), max_value=float(pmax),
                 step=0.1, format="%.1f", key=f"ip_{sel_ind}_{pname}")
 
-if pcols[-1].button("＋", key="add_ind", use_container_width=True):
+if pcols[-1].button("＋", key="add_ind", width="stretch"):
     st.session_state.indicators.append({"name": sel_ind, "params": dict(new_params)})
     st.rerun()
 
@@ -580,7 +580,7 @@ can_run = (has_indicators and bool(st.session_state.entry_conditions)
            and start_date < end_date)
 
 run_btn = st.button("▶ Запустить бэктест", type="primary",
-                     use_container_width=True, disabled=not can_run)
+                     width="stretch", disabled=not can_run)
 
 if not can_run and has_indicators:
     st.caption("Нужно: хотя бы одно условие входа + корректный диапазон дат")
@@ -708,12 +708,12 @@ if st.session_state.result is not None:
         r2[2].metric("Ср. проигрыш",   f"{result.avg_loss_pct:+.2f}%",
                   help="Средний процент убытка на одну убыточную сделку. Сравни с «Ср. выигрышем»: если выигрыш больше — стратегия имеет положительное матожидание.")
 
-        st.plotly_chart(build_chart(ohlcv, result, enriched), use_container_width=True)
+        st.plotly_chart(build_chart(ohlcv, result, enriched), width="stretch")
 
         with st.expander(f"Список сделок ({result.num_trades} шт.)"):
             trades_df = pd.DataFrame(result.trades)
             trades_df["pnl_pct"] = trades_df["pnl_pct"].round(3)
-            st.dataframe(trades_df, use_container_width=True)
+            st.dataframe(trades_df, width="stretch")
 
         # ── AI Analysis ───────────────────────────────────────────────────────
         st.divider()
@@ -814,7 +814,7 @@ if st.session_state.result is not None:
                     placeholder="Что понравилось или чего не хватило? (необязательно)",
                     label_visibility="collapsed",
                 )
-                if st.form_submit_button("Отправить отзыв", use_container_width=True):
+                if st.form_submit_button("Отправить отзыв", width="stretch"):
                     ctx = f"{asset} {timeframe}, сделок: {result.num_trades}"
                     send_feedback("👍" if rating.startswith("👍") else "👎", comment, ctx)
                     st.session_state.feedback_sent = True

@@ -557,12 +557,13 @@ def quick_lessons(answer: dict, outcome: dict, cons: dict, sigs: list[dict], act
     return out[:3]
 
 
-def typical_pullback(rd: RoundData, long: bool) -> float | None:
-    """Медиана отката против позиции за F свечей, в ATR, — только по видимой части.
+def typical_move(rd: RoundData, long: bool, against: bool) -> float | None:
+    """Медиана хода цены за F свечей против позиции (against) или в её сторону, в ATR.
 
-    Для каждой видимой свечи: насколько цена уходила против лонга (шорта) за
-    следующие F свечей. Это «обычный шум» именно этой бумаги в этом окне —
-    игрок мог оценить его до входа, поэтому сравнивать с ним стоп честно.
+    Считается только по видимой части: для каждой видимой свечи — насколько
+    цена уходила вниз и вверх за следующие F свечей. Это «обычный ход» именно
+    этой бумаги в этом окне — игрок мог оценить его до входа, поэтому
+    сравнивать с ним стоп и тейк честно (и подсказывать его до ответа).
     """
     v = rd.visible
     close, high, low = (v[k].to_numpy(dtype=float) for k in ("close", "high", "low"))
@@ -570,11 +571,17 @@ def typical_pullback(rd: RoundData, long: bool) -> float | None:
     moves = []
     for t in range(len(close) - F):
         nxt = slice(t + 1, t + 1 + F)
-        move = close[t] - low[nxt].min() if long else high[nxt].max() - close[t]
+        down, up = close[t] - low[nxt].min(), high[nxt].max() - close[t]
+        move = (down if against else up) if long else (up if against else down)
         moves.append(max(move, 0.0))
     if len(moves) < 10:
         return None
     return float(np.median(moves)) / atr
+
+
+def typical_pullback(rd: RoundData, long: bool) -> float | None:
+    """Обычный откат против позиции за F свечей (см. typical_move)."""
+    return typical_move(rd, long, against=True)
 
 
 def trade_lessons(rd: RoundData, answer: dict, outcome: dict, cons: dict) -> list[str]:
@@ -626,13 +633,14 @@ def trade_lessons(rd: RoundData, answer: dict, outcome: dict, cons: dict) -> lis
     else:
         path = (favorable - entry) * sign
         mfe = float(path.max()) / risk
-        mfe_atr = float(path.max()) / atr
+        run = typical_move(rd, long, against=False)
+        far = take_atr > 1.5 * run if run else take_atr > 3
         if mfe >= 1 and r < mfe - 0.5:
-            out.append(f"По ходу сделки цена была в плюсе на {_num(mfe, 1, 'R')}, а закрылась на {_num(r, 1, 'R')}. "
-                       f"Тейк в {take_atr:.1f} ATR оказался далёким для {_bars(F)}.")
-        elif take_atr > 3:
-            out.append(f"Тейк в {take_atr:.1f} ATR — далеко для {_bars(F)}: в твою сторону цена прошла "
-                       f"максимум {max(mfe_atr, 0):.1f} ATR.")
+            out.append(f"По ходу сделки цена была в плюсе на {_num(mfe, 1, 'R')}, а закрылась на {_num(r, 1, 'R')}: "
+                       f"до тейка в {take_atr:.1f} ATR за {_bars(F)} не дошла.")
+        elif far:
+            out.append(f"Тейк в {take_atr:.1f} ATR — далеко для {_bars(F)}: в половине случаев цена за это время "
+                       f"проходит в сторону {side}а не больше {run:.1f} ATR (по видимой части графика).")
         else:
             out.append(f"Ни стоп, ни тейк не сработали — сделка закрылась по времени на {_num(r, 1, 'R')}.")
     return out[:3]

@@ -105,7 +105,7 @@ def _layout(fig: go.Figure, height: int = 300, **kw) -> go.Figure:
 
 def _chart(fig: go.Figure, title: str, sub: str) -> None:
     st.html(f'<div class="tr-chart-title">{title}</div><div class="tr-chart-sub">{sub}</div>')
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
 # ─── Быстрый режим ────────────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ def quick_block(attempts: list[dict]) -> None:
 
     df = S.breakdown(attempts, "quick")
     st.html('<div class="tr-chart-title">По бумагам и таймфреймам</div>')
-    st.dataframe(df, use_container_width=True, hide_index=True, column_config={
+    st.dataframe(df, width="stretch", hide_index=True, column_config={
         "Попаданий": st.column_config.ProgressColumn("Попаданий, %", min_value=0, max_value=100, format="%d%%"),
         "Brier": st.column_config.NumberColumn("Brier", format="%.3f"),
     })
@@ -238,7 +238,7 @@ def trade_block(attempts: list[dict]) -> None:
 
     df = S.breakdown(attempts, "trade")
     st.html('<div class="tr-chart-title">По бумагам и таймфреймам</div>')
-    st.dataframe(df, use_container_width=True, hide_index=True, column_config={
+    st.dataframe(df, width="stretch", hide_index=True, column_config={
         "Прибыльных": st.column_config.ProgressColumn("Прибыльных, %", min_value=0, max_value=100, format="%d%%"),
     })
 
@@ -247,7 +247,7 @@ def trade_block(attempts: list[dict]) -> None:
 
 def journal_block(attempts: list[dict], export_bytes: bytes | None, on_import) -> None:
     if attempts:
-        st.dataframe(S.history_table(attempts), use_container_width=True, hide_index=True, height=360)
+        st.dataframe(S.history_table(attempts), width="stretch", hide_index=True, height=360)
     else:
         empty("Журнал пуст", "Каждая попытка сохраняется сюда: что было на графике, твой прогноз и чем всё кончилось.")
 
@@ -255,7 +255,7 @@ def journal_block(attempts: list[dict], export_bytes: bytes | None, on_import) -
     with c1:
         st.download_button(
             "⬇ Выгрузить журнал (CSV)", data=export_bytes or b"", file_name="trader-journal.csv",
-            mime="text/csv", use_container_width=True, disabled=not attempts,
+            mime="text/csv", width="stretch", disabled=not attempts,
         )
         st.html('<div class="tr-cap">Журнал привязан к этому браузеру и хранится на сервере. '
                 'Сервер иногда перезапускается — выгружай CSV, чтобы ничего не потерять.</div>')

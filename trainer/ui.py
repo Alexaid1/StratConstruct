@@ -162,6 +162,8 @@ def page_css() -> str:
   font-family: var(--tr-ui);
   -webkit-font-smoothing: antialiased;
 }}
+/* Индикатор «выполняется / Stop» Streamlit в игре лишний: у неё свои индикаторы ожидания */
+[data-testid="stStatusWidget"] {{ visibility: hidden; }}
 /* ── Шапка с меню разделов (st.navigation position="top") ── */
 [data-testid="stHeader"] {{
   background: rgba(11, 9, 32, 0.72);

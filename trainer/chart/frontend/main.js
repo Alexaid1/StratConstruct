@@ -638,17 +638,24 @@
   // ─── Вкладки режимов и HUD ─────────────────────────────────────────────────
   function renderModes() {
     const modes = S.st.modes || [];
+    const locked = modes.filter((m) => !m.available);
     el.modes.innerHTML = modes.map((m) => `
       <button class="mode${m.id === S.mode ? " active" : ""}${m.available ? "" : " locked"}" role="tab"
         aria-selected="${m.id === S.mode}" data-mode="${m.id}" ${m.available ? "" : 'aria-disabled="true" title="Скоро"'}>
         <span class="num">${m.number}</span>
         <span class="txt"><span class="title">${esc(m.title)}</span><span class="tag">${m.available ? esc(m.tagline) : "скоро"}</span></span>
         ${m.available ? "" : ICON.lock}
-      </button>`).join("");
+      </button>`).join("")
+      // На телефоне режимы «скоро» не помещаются — сворачиваются в один чип.
+      + (locked.length ? `
+      <button class="mode locked soon-more" aria-disabled="true" title="Скоро: ${esc(locked.map((m) => m.title).join(", "))}">
+        <span class="txt"><span class="title">+${locked.length}</span><span class="tag">скоро</span></span>${ICON.lock}
+      </button>` : "");
   }
   el.modes.addEventListener("click", (e) => {
     const b = e.target.closest(".mode");
     if (!b) return;
+    if (b.classList.contains("soon-more")) { shake(b); return; }
     const m = (S.st.modes || []).find((x) => x.id === b.dataset.mode);
     if (!m) return;
     if (!m.available) {
@@ -741,6 +748,8 @@
   });
 
   // ─── Панель ответа ─────────────────────────────────────────────────────────
+  const NOVICE_ROUNDS = 5;   // сколько первых раундов режима показывать пояснения для новичка
+  const SINGLE_COLUMN_PX = 980;  // как в style.css: уже — панель ответа уезжает под график
   const CONF_WORDS = [[50, "монетка"], [60, "чуть лучше, чем наугад"], [70, "скорее да"], [80, "уверен"], [90, "очень уверен"], [100, "железно"]];
   const confWord = (v) => (CONF_WORDS.find(([t]) => v <= t) || CONF_WORDS[CONF_WORDS.length - 1])[1];
   const stakes = (v) => {
@@ -771,8 +780,11 @@
         <kbd>${key}</kbd>
       </button>`;
     const st = stakes(S.confidence);
+    // Первые раунды — пояснение для новичка; дальше оно только мешает.
+    const lead = (S.st.round_no || 1) <= NOVICE_ROUNDS
+      ? `<p class="plead">Каждая свеча — движение цены за период: зелёная — выросла, красная — упала.</p>` : "";
     el.panel.innerHTML = `
-      <div><div class="eyebrow">Прогноз · ${S.F} свечей вперёд</div><h2 class="ptitle">Куда пойдёт цена?</h2></div>
+      <div><div class="eyebrow">Прогноз · ${S.F} свечей вперёд</div><h2 class="ptitle">Куда пойдёт цена?</h2>${lead}</div>
       ${errorHtml()}
       <div class="choices">
         ${choice("up", "Вверх", "больше +" + pct + "%", "↑")}
@@ -794,13 +806,23 @@
   function renderTradePanel() {
     const p = S.payload;
     const long = S.trade.direction === "long";
+    const side = long ? "лонга" : "шорта";
+    const mv = (S.st.moves || {})[S.trade.direction] || {};
+    const lead = (S.st.round_no || 1) <= NOVICE_ROUNDS
+      ? `<p class="plead">Лонг — ставка на рост, шорт — на падение. Стоп закроет сделку с убытком, тейк — с прибылью.</p>` : "";
+    // Обычный ход цены считается по видимой части — подсказка честная, будущее не выдаёт.
+    const moves = mv.against != null && mv.with != null ? `
+      <div class="moves">За ${S.F} свечей цена здесь обычно уходит против ${side} на <b>${fmt(mv.against, 1)} ATR</b>,
+        а в его сторону — на <b>${fmt(mv.with, 1)} ATR</b>. <small>Медиана по видимой части графика.</small></div>` : "";
+    const recStop = mv.against != null ? Math.max(0.5, Math.round(mv.against * 10) / 10) : null;
     el.panel.innerHTML = `
-      <div><div class="eyebrow">Сделка · вход по ${fmt(p.last_close)}</div><h2 class="ptitle">Расставь стоп и тейк</h2></div>
+      <div><div class="eyebrow">Сделка · вход по ${fmt(p.last_close)}</div><h2 class="ptitle">Расставь стоп и тейк</h2>${lead}</div>
       ${errorHtml()}
       <div class="seg" role="group" aria-label="Направление">
         <button class="long${long ? " on" : ""}" data-dir="long" aria-pressed="${long}">${ICON.up}Лонг</button>
         <button class="short${!long ? " on" : ""}" data-dir="short" aria-pressed="${!long}">${ICON.down}Шорт</button>
       </div>
+      ${moves}
       <div class="field stop"><label for="inStop">Стоп</label>
         <div class="stepper"><button data-step="stop" data-d="-1" aria-label="Стоп ниже">−</button><input id="inStop" type="number" step="0.01" value="${fmt(S.trade.stop)}"><button data-step="stop" data-d="1" aria-label="Стоп выше">+</button></div>
         <div class="meta" id="metaStop"></div>
@@ -810,7 +832,8 @@
         <div class="meta" id="metaTake"></div>
       </div>
       <div class="presets"><span class="k">стоп</span>
-        ${[0.5, 1, 1.5, 2].map((a) => `<button class="chip" data-satr="${a}">${a} ATR</button>`).join("")}
+        ${[1, 1.5, 2, 3].map((a) => `<button class="chip" data-satr="${a}">${a} ATR</button>`).join("")}
+        ${recStop != null ? `<button class="chip rec" data-satr="${recStop}" title="Стоп на обычном откате против позиции">по откату · ${fmt(recStop, 1)}</button>` : ""}
       </div>
       <div class="presets"><span class="k">R:R</span>
         ${[1, 2, 3].map((r) => `<button class="chip" data-rr="${r}">1:${r}</button>`).join("")}
@@ -889,11 +912,15 @@
     } else {
       stamp = `<span class="stamp ${o.correct ? "win" : "lose"}">${o.correct ? "В ТОЧКУ" : "МИМО"}</span>`;
       big = `<div class="big ${o.points >= 0 ? "pos" : "neg"}">${sgn(o.points, 0)}<small>очков</small></div>`;
+      // Те же проценты, что были на кнопках ответа, — без ATR и Brier (они в статистике).
+      const bandPct = S.st.config.sideways_mult * p.atr / p.last_close * 100;
+      const chg = Number(o.change_pct) || 0;
+      const how = o.actual === "flat" ? `цена почти не сдвинулась (${sgn(chg, 1)}%)`
+        : chg > 0 ? `цена выросла на ${fmt(chg, 1)}%` : `цена упала на ${fmt(Math.abs(chg), 1)}%`;
       facts = [
-        ["Твой прогноз", `${esc(o.choice_label || "")} · ${a.confidence}%`],
-        ["Как вышло", `${esc(o.actual_label || "")} · ${sgn(o.change_pct)}% (${sgn(o.change_atr, 1)} ATR)`],
-        ["Порог боковика", `±${o.threshold_atr} ATR`],
-        ["Brier", fmt(o.brier, 3)],
+        ["Твой прогноз", `${esc(o.choice_label || "")} · уверенность ${a.confidence}%`],
+        ["Как вышло", `${esc(o.actual_label || "")}: ${how}`],
+        ["Коридор боковика", `±${fmt(bandPct, 1)}%`],
       ];
     }
     const evs = (p.events || []).map((ev) => `<li><i style="background:${C.event[ev.type] || C.macd}"></i><span>свеча ${relBar(ev.bar)}: ${esc(ev.label)}</span></li>`).join("");
@@ -988,10 +1015,15 @@
     if (S.mode === "quick") emit("answer", { choice: S.choice, confidence: S.confidence, drawings: S.drawings });
     else emit("answer", { direction: S.trade.direction, stop: S.trade.stop, take: S.trade.take, drawings: S.drawings });
     renderPanel(false);
+    // В одну колонку кнопка ответа — под графиком; без прокрутки игрок пропустит раскрытие.
+    if (window.innerWidth <= SINGLE_COLUMN_PX) {
+      el.board.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" });
+    }
   }
   function nextRound() {
     if (S.waiting || !S.revealDone) return;
     S.waiting = true;
+    S.focusOnNext = true;
     emit("next", { drawings: S.drawings });
     renderPanel(false);
     const again = $("next2");
@@ -1111,23 +1143,67 @@
         <button class="cta" data-howto="close">Понятно, играем</button>
       </div>`;
   }
+  // Короткий вход для первого захода: три шага и большая «Играть».
+  // Полные правила — по ссылке под кнопкой или по «Как играть» в шапке.
+  function introHtml() {
+    const step = (n, title, text) => `<li><span class="n">${n}</span><div><b>${title}</b><p>${text}</p></div></li>`;
+    return `
+      <div class="howto-card intro" role="document">
+        <button class="x" data-howto="close" aria-label="Закрыть">${ICON.close}</button>
+        <header class="h-head">
+          <div class="eyebrow">Игра · 1 минута</div>
+          <h2 id="howTitle">Угадай, куда <span>пойдёт цена</span></h2>
+        </header>
+        <ol class="intro-steps">
+          ${step(1, "Посмотри на график", "Это настоящие акции Мосбиржи. Какие именно и за какие даты — узнаешь после ответа.")}
+          ${step(2, "Выбери: вверх, вниз или боковик", "И насколько ты уверен — от этого зависит, сколько очков получишь или потеряешь.")}
+          ${step(3, "Смотри, что было дальше", "Будущее откроется свеча за свечой, а под графиком появится разбор: почему так вышло.")}
+        </ol>
+        <button class="cta" data-howto="close">Играть ${ICON.next}</button>
+        <button class="more" data-howto="full">Подробные правила и как читать индикаторы</button>
+      </div>`;
+  }
+
   // Фокус переносим только при работе с клавиатуры — от мыши рамка фокуса лишняя.
-  function openHowto(fromKeyboard) {
+  function openHowto(fromKeyboard, variant = "full") {
     if (!S.st) return;
     toggleSettings(false);
-    el.howto.innerHTML = howtoHtml();
+    el.howto.innerHTML = variant === "intro" ? introHtml() : howtoHtml();
     el.howto.hidden = false;
+    fitHowto();
     const x = el.howto.querySelector(".x");
     if (x && fromKeyboard) x.focus({ preventScroll: true });
+  }
+  // Окно без своей прокрутки: если оно выше игры, игра (и iframe) вытягивается под него.
+  function fitHowto() {
+    requestAnimationFrame(() => {
+      const card = el.howto.hidden ? null : el.howto.firstElementChild;
+      const pad = parseFloat(getComputedStyle(el.howto).paddingTop) || 0;
+      el.app.style.minHeight = card ? Math.ceil(card.offsetHeight + 2 * pad) + "px" : "";
+      fitHeight();
+    });
   }
   function closeHowto(fromKeyboard) {
     if (el.howto.hidden) return;
     el.howto.hidden = true;
+    fitHowto();
     if (fromKeyboard) el.howBtn.focus({ preventScroll: true });
+    focusGame();
   }
+  // Показать игру с начала: вкладки, счёт и график — особенно важно на телефоне,
+  // где после кнопок внизу график остаётся за экраном.
+  function focusGame() {
+    requestAnimationFrame(() => el.app.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" }));
+  }
+  window.addEventListener("resize", () => { if (!el.howto.hidden) fitHowto(); });
   // detail === 0 — «клик» с клавиатуры (Enter/пробел на кнопке).
   el.howBtn.addEventListener("click", (e) => openHowto(e.detail === 0));
   el.howto.addEventListener("click", (e) => {
+    if (e.target.closest("[data-howto=full]")) {
+      openHowto(e.detail === 0, "full");
+      el.howto.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" });
+      return;
+    }
     if (e.target === el.howto || e.target.closest("[data-howto=close]")) closeHowto(e.detail === 0);
   });
 
@@ -1314,6 +1390,11 @@
     }
     legendFor(S.shown - 1);
     requestLayout();
+    // «Следующий раунд» жмут внизу (в панели или под разбором) — новый график наверху.
+    if (S.focusOnNext) {
+      S.focusOnNext = false;
+      focusGame();
+    }
   }
 
   function padLabels(labels) {
@@ -1382,7 +1463,10 @@
       m.push({ time: tOf(ex), position: long ? "aboveBar" : "belowBar", shape: "circle", color: col, text: sgn(S.outcome.r) + "R" });
     } else if (S.outcome) {
       const end = S.H + S.F - 1;
-      m.push({ time: tOf(end), position: S.outcome.change_pct >= 0 ? "aboveBar" : "belowBar", shape: "circle", color: S.outcome.correct ? C.take : C.stop, text: sgn(S.outcome.change_pct) + "%" });
+      // Цвет — направление цены (как у свечей), попадание — значком: иначе рост «+8%» красный при промахе.
+      const up = S.outcome.change_pct >= 0;
+      m.push({ time: tOf(end), position: up ? "aboveBar" : "belowBar", shape: "circle", color: up ? C.up : C.down,
+        text: sgn(S.outcome.change_pct, 1) + "% " + (S.outcome.correct ? "✓" : "✗") });
     }
     m.sort((a, b) => a.time - b.time);
     markers.setMarkers(m);
@@ -1472,10 +1556,10 @@
       renderPanel(false);
     }
     renderHUD();
-    // Первый заход — сразу правила (дальше они по кнопке «Как играть»).
+    // Первый заход — короткий вход (полные правила — по ссылке в нём и по кнопке «Как играть»).
     if (first && !store.get(HOWTO_KEY, false)) {
       store.set(HOWTO_KEY, true);
-      openHowto();
+      openHowto(false, "intro");
     }
     fitHeight();
   }
