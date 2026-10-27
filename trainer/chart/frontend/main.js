@@ -959,7 +959,7 @@
       return;
     }
     if (b.id === "submit") { submit(); return; }
-    if (b.id === "toReview") { el.review.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" }); return; }
+    if (b.id === "toReview") { scrollToEl(el.review); return; }
     if (b.id === "next") { nextRound(); }
   });
   el.panel.addEventListener("input", (e) => {
@@ -1017,7 +1017,7 @@
     renderPanel(false);
     // В одну колонку кнопка ответа — под графиком; без прокрутки игрок пропустит раскрытие.
     if (window.innerWidth <= SINGLE_COLUMN_PX) {
-      el.board.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" });
+      scrollToEl(el.board);
     }
   }
   function nextRound() {
@@ -1176,12 +1176,12 @@
   }
   // Окно без своей прокрутки: если оно выше игры, игра (и iframe) вытягивается под него.
   function fitHowto() {
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       const card = el.howto.hidden ? null : el.howto.firstElementChild;
       const pad = parseFloat(getComputedStyle(el.howto).paddingTop) || 0;
       el.app.style.minHeight = card ? Math.ceil(card.offsetHeight + 2 * pad) + "px" : "";
       fitHeight();
-    });
+    }, 0);
   }
   function closeHowto(fromKeyboard) {
     if (el.howto.hidden) return;
@@ -1193,7 +1193,35 @@
   // Показать игру с начала: вкладки, счёт и график — особенно важно на телефоне,
   // где после кнопок внизу график остаётся за экраном.
   function focusGame() {
-    requestAnimationFrame(() => el.app.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" }));
+    // setTimeout, а не requestAnimationFrame: в невидимой вкладке rAF не приходит вовсе.
+    setTimeout(() => scrollToEl(el.app), 30);
+  }
+  // Прокрутка страницы к элементу игры с поправкой на липкую шапку Streamlit:
+  // обычный scrollIntoView прячет верх игры (вкладки режимов) под шапкой.
+  function scrollToEl(target) {
+    const behavior = reduceMotion() ? "auto" : "smooth";
+    let frame = null, pdoc = null;
+    try { frame = window.frameElement; pdoc = window.parent.document; } catch (e) { /* чужой домен */ }
+    if (!frame || !pdoc) { target.scrollIntoView({ behavior, block: "start" }); return; }
+    let sc = frame.parentElement;
+    while (sc && sc !== pdoc.body) {
+      const oy = window.parent.getComputedStyle(sc).overflowY;
+      if ((oy === "auto" || oy === "scroll") && sc.scrollHeight > sc.clientHeight) break;
+      sc = sc.parentElement;
+    }
+    if (!sc || sc === pdoc.body) sc = pdoc.scrollingElement;
+    const header = pdoc.querySelector('[data-testid="stHeader"]');
+    const offset = (header ? header.getBoundingClientRect().bottom : 0) + 8;
+    const y = frame.getBoundingClientRect().top + target.getBoundingClientRect().top;
+    const dy = y - offset;
+    if (Math.abs(dy) < 4) return;
+    const start = sc.scrollTop;
+    sc.scrollBy({ top: dy, behavior });
+    // Плавная прокрутка иногда молча не срабатывает (фоновая вкладка, встроенные
+    // браузеры) — тогда докручиваем мгновенно.
+    if (behavior === "smooth") {
+      setTimeout(() => { if (Math.abs(sc.scrollTop - start) < 2) sc.scrollBy({ top: dy, behavior: "auto" }); }, 600);
+    }
   }
   window.addEventListener("resize", () => { if (!el.howto.hidden) fitHowto(); });
   // detail === 0 — «клик» с клавиатуры (Enter/пробел на кнопке).
@@ -1201,7 +1229,7 @@
   el.howto.addEventListener("click", (e) => {
     if (e.target.closest("[data-howto=full]")) {
       openHowto(e.detail === 0, "full");
-      el.howto.scrollIntoView({ behavior: reduceMotion() ? "auto" : "smooth", block: "start" });
+      scrollToEl(el.howto);
       return;
     }
     if (e.target === el.howto || e.target.closest("[data-howto=close]")) closeHowto(e.detail === 0);
@@ -1306,7 +1334,7 @@
     if (!b) return;
     if (b.dataset.show) showOnChart(b.dataset.show);
     else if (b.id === "next2") {
-      el.app.scrollIntoView({ block: "start" });
+      scrollToEl(el.app);
       nextRound();
     }
   });
@@ -1585,7 +1613,7 @@
   }
 
   // Хук для отладки и автотестов в браузере.
-  window.__trainer = { chart, candles, S, layout };
+  window.__trainer = { chart, candles, S, layout, scrollToEl, focusGame };
 
   ST.ready();
   fitHeight();
