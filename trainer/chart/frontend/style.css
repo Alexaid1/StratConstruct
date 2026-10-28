@@ -999,6 +999,13 @@ input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.1); }
 .pop-sec { display: flex; flex-direction: column; gap: 8px; }
 .pop-sec .k { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3); }
 .picks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+/* Бумаг много — три в ряд, компактнее */
+.picks.tk { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.picks.tk .pick { padding: 6px 8px; }
+.picks.tk .pick span { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.k-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.k-row .all { border: 0; background: none; padding: 2px 0; cursor: pointer; font: 600 11px var(--font-ui, inherit); color: var(--sky); }
+.k-row .all:hover { text-decoration: underline; }
 .pick {
   display: flex;
   flex-direction: column;

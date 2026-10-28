@@ -1099,8 +1099,9 @@
     };
     el.settings.innerHTML = `
       <div class="pop-head"><b>Настройки раундов</b><span>применятся со следующего раунда</span></div>
-      <div class="pop-sec"><div class="k">Бумаги</div>
-        <div class="picks">${st.tickers.map((t) => pick("tk", t.id, t.id, t.name)).join("")}</div></div>
+      <div class="pop-sec"><div class="k-row"><div class="k">Бумаги · ${set.tickers.length} из ${st.tickers.length}</div>
+        ${set.tickers.length < st.tickers.length ? '<button class="all" data-all="1">выбрать все</button>' : ""}</div>
+        <div class="picks tk">${st.tickers.map((t) => pick("tk", t.id, t.id, t.name)).join("")}</div></div>
       <div class="pop-sec"><div class="k">Таймфрейм</div>
         <div class="picks">${st.timeframes.map((t) => pick("tf", t.id, t.label, "")).join("")}</div></div>
       <div class="sw-row">
@@ -1128,6 +1129,8 @@
       const next = flip(S.set[key], b.dataset.tk || b.dataset.tf);
       if (!next.length) { shake(b); return; }          // хотя бы одна бумага и один таймфрейм
       S.set[key] = next;
+    } else if (b.dataset.all) {
+      S.set.tickers = S.st.settings.tickers.map((t) => t.id);
     } else if (b.dataset.sw === "identity") {
       S.set.show_identity = !S.set.show_identity;
     } else {
