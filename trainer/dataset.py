@@ -111,7 +111,11 @@ def dividend_column(
     """
     out = np.zeros(len(index))
     for _, row in dividends.iterrows():
-        ex = ex_dividend_date(row["registry_date"], trading_days)
+        # Явная дата гэпа из CSV — для случаев, где правило T+1 не сработало
+        # (например, бумага почти не торговалась в субботнюю сессию).
+        manual = row.get("ex_date")
+        ex = (pd.Timestamp(manual).normalize() if manual is not None and pd.notna(manual)
+              else ex_dividend_date(row["registry_date"], trading_days))
         if ex is None:
             continue
         pos = index.searchsorted(ex)  # первая свеча с временем >= полуночи дня гэпа
@@ -124,7 +128,8 @@ def load_dividends_csv(path: Path = config.DIVIDENDS_CSV) -> pd.DataFrame:
     df = pd.read_csv(path, comment="#")
     df["registry_date"] = pd.to_datetime(df["registry_date"])
     df["value"] = df["value"].astype(float)
-    return df[["ticker", "registry_date", "value"]]
+    df["ex_date"] = pd.to_datetime(df["ex_date"]) if "ex_date" in df else pd.NaT
+    return df[["ticker", "registry_date", "value", "ex_date"]]
 
 
 def check_dividend_gaps(daily: pd.DataFrame) -> pd.DataFrame:

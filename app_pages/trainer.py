@@ -18,7 +18,8 @@ from trainer import analysis, config, ui_stats
 from trainer.chart import game
 from trainer.journal import Journal
 from trainer.modes import MIN_DISTANCE_ATR, MODES, AnswerError, mode_cards
-from trainer.rounds import build_round, generate_round, identity, predict_payload, reveal_payload
+from trainer.rounds import identity, predict_payload, reveal_payload
+from trainer.selection import pick_round
 from trainer.ui import footer_html, hero_html, page_css
 
 GAME_KEY = "trainer_game"
@@ -69,18 +70,17 @@ def init_state() -> None:
 def new_round() -> None:
     prev = ss.get("tr_round")
     if prev is not None:
-        ss.tr_recent = ([prev.spec.ticker] + [t for t in ss.get("tr_recent", []) if t != prev.spec.ticker])[:2]
+        ss.tr_recent = ([prev.spec.ticker] + [t for t in ss.get("tr_recent", []) if t != prev.spec.ticker])[:3]
     pool = list(ss.tr_tickers or config.TICKERS)
-    # Одна и та же бумага подряд выглядит как сбой: последние две пропускаем,
+    # Одна и та же бумага подряд выглядит как сбой: последние три пропускаем,
     # пока в фильтре остаётся из чего выбрать.
     fresh = [t for t in pool if t not in ss.get("tr_recent", [])]
     tickers = fresh or [t for t in pool if not ss.get("tr_recent") or t != ss.tr_recent[0]] or pool
     try:
-        spec = generate_round(tickers=tickers, timeframes=ss.tr_timeframes or None)
+        _, ss.tr_round = pick_round(tickers=tickers, timeframes=ss.tr_timeframes or None)
     except ValueError:
         # Под выбранные фильтры нет данных — играем на всех бумагах.
-        spec = generate_round()
-    ss.tr_round = build_round(spec)
+        _, ss.tr_round = pick_round()
     ss.tr_phase = "predict"
     ss.tr_answer = None
     ss.tr_outcome = None

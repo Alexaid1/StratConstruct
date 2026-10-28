@@ -266,7 +266,8 @@ def levels_signal(close: np.ndarray, high: np.ndarray, low: np.ndarray, atr: flo
     prior_hi, prior_lo = float(high[:-3].max()), float(low[:-3].min())
     if hi <= lo:
         return None
-    pos = (c - lo) / (hi - lo)
+    # Округляем как в подписи: «25%» на карточке и «в середине» в тексте не должны спорить.
+    pos = round((c - lo) / (hi - lo) * 100) / 100
     to_hi, to_lo = (hi - c) / atr, (c - lo) / atr
     vote = None
     if c > prior_hi:

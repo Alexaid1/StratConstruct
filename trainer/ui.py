@@ -297,7 +297,7 @@ def hero_html() -> str:
       <span class="step"><b>04</b>Разбери</span>
     </div>
   </div>
-  <div class="side">SBER · LKOH · YDEX · MGNT</div>
+  <div class="side">{len(config.TICKERS)} бумаг · дневки и часовики</div>
   <div class="credit">* горы — это настоящие графики акций</div>
 </div>
 """
